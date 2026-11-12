@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Beast Brawl!</title>
+<meta name="description" content="Beast Brawl! : place tes animaux, lance le combat et grimpe dans le classement.">
+<meta name="theme-color" content="#0e1a3c">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Beast Brawl!">
+<link rel="preload" href="assets/fonts/LilitaOne.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles/base.css">
+<link rel="stylesheet" href="styles/menus.css">
+<link rel="stylesheet" href="styles/battle.css">
+<script type="module" src="src/main.js"></script>
+</head>
+<body>
+<!-- Écran noir du studio au lancement (logo « Michigan » qui brille avec son jingle) -->
+<div id="splash" aria-label="Michigan présente">
+  <div class="sp-logo"><img class="sp-base" src="assets/ui/studio_logo.webp" alt="Michigan"><img class="sp-shine" src="assets/ui/studio_logo.webp" alt=""><span class="sp-flare"></span></div>
+  <div class="sp-hint" id="spHint" hidden>Touche l'écran</div>
+</div>
+
+<div id="backdrop"></div>
+<div id="app">
+  <div id="stage">
+    <!-- Chargement -->
+    <section id="scrLoading" class="screen">
+      <div class="ld-bar"><div class="ld-fill" id="ldFill"></div></div>
+      <div class="ld-text t" id="ldText">Chargement…</div>
+      <div class="ld-tip t" id="ldTip"></div>
+    </section>
+
+    <!-- Menus (accueil, boutique, collection, clan, classé) -->
+    <section id="scrMenu" class="screen" hidden>
+      <div id="menuBg"></div>
+      <div id="page"></div>
+      <div id="topbar">
+        <div class="tb-lvl t" id="tbLvl">1</div>
+        <div class="tb-xp"><div class="tb-xpfill" id="tbXpFill"></div></div>
+        <div class="tb-xptxt t" id="tbXp">0 / 100</div>
+        <div class="tb-val t" id="tbCoins" style="left:442px">0</div>
+        <div class="tb-val t" id="tbPaws" style="left:676px">0</div>
+        <div class="tb-val t" id="tbRubies" style="left:882px">0</div>
+        <button class="hit" data-act="plus-coins" style="left:256px;top:12px;width:62px;height:58px" aria-label="Obtenir des pièces"></button>
+        <button class="hit" data-act="plus-paws" style="left:504px;top:12px;width:62px;height:58px" aria-label="Obtenir des pattes"></button>
+        <button class="hit" data-act="plus-rubies" style="left:722px;top:12px;width:62px;height:58px" aria-label="Obtenir des rubis"></button>
+      </div>
+      <nav id="nav"></nav>
+    </section>
+
+    <!-- Combat -->
+    <section id="scrBattle" class="screen" hidden>
+      <canvas id="cv" width="941" height="1672"></canvas>
+      <div id="bHud"></div>
+    </section>
+
+    <div id="fly"></div>
+    <div id="modals"></div>
+    <div id="toasts"></div>
+  </div>
+</div>
+</body>
+</html>

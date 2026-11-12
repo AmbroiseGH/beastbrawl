@@ -1,0 +1,46 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "players": {
+      ".read": true,
+      ".indexOn": ["trophies"],
+      "$uid": {
+        ".write": true,
+        ".validate": "newData.hasChildren(['name', 'trophies'])",
+        "name": { ".validate": "newData.isString() && newData.val().length <= 14" },
+        "trophies": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 99999" },
+        "level": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 999" }
+      }
+    },
+    "friends": {
+      "$uid": { ".read": true, "$friend": { ".write": true, ".validate": "newData.isBoolean()" } }
+    },
+    "clans": {
+      ".read": true,
+      "$clan": {
+        ".write": true,
+        "name": { ".validate": "newData.isString() && newData.val().length >= 3 && newData.val().length <= 18" },
+        "desc": { ".validate": "newData.isString() && newData.val().length <= 80" }
+      }
+    },
+    "clanNames": {
+      ".read": true,
+      "$name": { ".write": true, ".validate": "newData.isString() && newData.val().length <= 20" }
+    },
+    "clanChat": {
+      "$clan": {
+        ".read": true,
+        ".write": true,
+        "$msg": { "text": { ".validate": "newData.isString() && newData.val().length <= 140" } }
+      }
+    },
+    "inbox": {
+      "$uid": {
+        ".read": true,
+        ".write": true,
+        "$msg": { "name": { ".validate": "newData.isString() && newData.val().length <= 14" } }
+      }
+    }
+  }
+}
