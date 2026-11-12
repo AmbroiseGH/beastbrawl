@@ -50,6 +50,9 @@ Le jeu en ligne utilise une base **Firebase Realtime Database** (gratuite) :
 3. Copie l'adresse de la base (elle ressemble à `https://xxxx-default-rtdb.europe-west1.firebasedatabase.app`)
    dans [`src/online/config.js`](src/online/config.js), champ `databaseURL`.
 
+Ces règles sont volontairement ouvertes (pas de compte joueur, résultats calculés sur l'appareil) : c'est suffisant pour jouer
+entre amis, mais il faudra les renforcer avant une sortie publique.
+
 Les combats contre d'autres joueurs sont « différés » : tu affrontes l'équipe et le placement enregistrés par l'adversaire,
 et il reçoit le résultat à sa prochaine connexion.
 
