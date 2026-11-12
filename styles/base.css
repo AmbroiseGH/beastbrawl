@@ -127,5 +127,5 @@ body.debug .hit{outline:3px solid rgba(255,0,60,.8);background:rgba(255,0,60,.15
 .ld-fill{width:0;height:100%;background:linear-gradient(#ffe45c,#ffb21e 55%,#f08a0c);box-shadow:inset 0 6px 0 rgba(255,255,255,.55),inset 0 -8px 0 rgba(160,70,0,.4);transition:width .25s ease-out;position:relative;overflow:hidden}
 .ld-fill::after{content:'';position:absolute;inset:0;background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.55) 50%,transparent 70%);background-size:300% 100%;animation:ldShine 1.3s linear infinite}
 @keyframes ldShine{from{background-position:150% 0}to{background-position:-150% 0}}
-.ld-text{position:absolute;left:0;right:0;top:1548px;text-align:center;font-size:40px}
-.ld-tip{position:absolute;left:60px;right:60px;top:1604px;text-align:center;font-size:27px;color:var(--cream);white-space:normal;-webkit-text-stroke-width:5px;text-shadow:0 3px 0 var(--ink)}
+.ld-text{position:absolute;left:0;right:0;top:1532px;text-align:center;font-size:40px}
+.ld-tip{position:absolute;left:50px;right:50px;top:1590px;text-align:center;font-size:25px;line-height:1.15;color:var(--cream);white-space:normal;-webkit-text-stroke-width:5px;text-shadow:0 3px 0 var(--ink)}

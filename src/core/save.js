@@ -19,6 +19,7 @@ export function load() {
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) { const d = JSON.parse(raw); S = Object.assign(fresh(), d); S.settings = Object.assign(fresh().settings, d.settings || {}); }
+    else localStorage.setItem(KEY, JSON.stringify(S));      // première visite : on garde tout de suite l'identifiant du joueur
   } catch (e) { console.warn('sauvegarde illisible, nouvelle partie', e); S = fresh(); }
   return S;
 }

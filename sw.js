@@ -1,6 +1,6 @@
 // Beast Brawl! — service worker : le jeu reste jouable hors ligne une fois chargé.
 // Code (html, js, css) : réseau d'abord, pour recevoir les mises à jour tout de suite ; cache si hors ligne.
-// Images, sons, polices : cache d'abord (ils changent rarement), réseau sinon.
+// Images, sons, polices : la copie gardée d'abord (affichage immédiat), rafraîchie en arrière-plan.
 const VERSION = 'bb-v1';
 
 self.addEventListener('install', () => self.skipWaiting());
@@ -17,10 +17,10 @@ self.addEventListener('fetch', (e) => {
     const cache = await caches.open(VERSION);
     if (isAsset) {
       const hit = await cache.match(req);
-      if (hit) return hit;
-      const res = await fetch(req);
-      if (res.ok && res.status === 200) cache.put(req, res.clone());
-      return res;
+      // on sert tout de suite la copie gardée, et on la rafraîchit en arrière-plan pour le prochain lancement
+      const fresh = fetch(req, { cache: 'no-cache' }).then((res) => { if (res.ok && res.status === 200) cache.put(req, res.clone()); return res; });
+      if (hit) { e.waitUntil(fresh.catch(() => {})); return hit; }
+      return fresh;
     }
     try {
       const res = await fetch(req, { cache: 'no-cache' });

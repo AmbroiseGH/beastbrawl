@@ -204,8 +204,8 @@ function onEvents(evs) {
       }
       if (e.crit) { sfx.crit(); V.burst('star_big', q.x, q.y - 50, 5, { s: 0.3, sp0: 140, sp1: 320, up: 120 }); B.stop = 0.07; }
       if (e.kind === 'special') { B.stop = 0.09; V.burst('star_big', q.x, q.y - 50, 4, { s: 0.26, up: 100 }); }
-      const size = e.kind === 'splash' ? 22 : e.kind === 'aoe' ? 28 : e.kind === 'special' ? 46 : 32;
-      V.text(e.amount, q.x + rand(-22, 22), q.y - 96 + rand(-8, 8), { size: size * (e.crit ? 1.4 : 1), tint: e.crit ? 'yellow' : e.kind === 'special' || e.kind === 'aoe' ? 'orange' : mine ? 'red' : 'white', vx: rand(-30, 30), life: e.kind === 'splash' ? 0.55 : 0.85, vy: -130, pop: e.crit || e.kind === 'special' ? 1.4 : 1 });
+      const size = e.kind === 'splash' ? 19 : e.kind === 'aoe' ? 24 : e.kind === 'special' ? 40 : 27;
+      V.text(e.amount, q.x + rand(-26, 26), q.y - 100 + rand(-14, 10), { size: size * (e.crit ? 1.35 : 1), tint: e.crit ? 'yellow' : e.kind === 'special' || e.kind === 'aoe' ? 'orange' : mine ? 'red' : 'white', vx: rand(-30, 30), life: e.kind === 'splash' ? 0.55 : 0.85, vy: -130, pop: e.crit || e.kind === 'special' ? 1.4 : 1 });
     } else if (e.type === 'aoe') {
       const q = toPx(e.x, e.y);
       V.fx('dust_ring', q.x, q.y + 6, { s0: 0.5, s1: 1.9, life: 0.45, flat: 0.62, a: 0.9 }); V.decal('crater2', q.x, q.y + 10, 5, 0.75);

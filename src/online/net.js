@@ -58,11 +58,11 @@ export const Net = {
   // Au démarrage : on publie le profil et on revient régulièrement signaler sa présence
   async init() {
     if (!cfg.url) return false;
-    try { await Net.pushProfile(true); setInterval(() => { if (!document.hidden) Net.pushProfile(true); }, 60000); return true; } catch (e) { console.warn('jeu en ligne indisponible :', e.message); return false; }
+    try { if (S.name) await Net.pushProfile(true); else await get('players/' + S.uid + '/name'); setInterval(() => { if (!document.hidden) Net.pushProfile(true); }, 60000); return true; } catch (e) { console.warn('jeu en ligne indisponible :', e.message); return false; }
   },
   // Publie le profil (regroupé : au plus une fois toutes les 3 s)
   pushProfile(now) {
-    if (!cfg.url) return Promise.resolve();
+    if (!cfg.url || !S.name) return Promise.resolve();      // pas de profil publié tant que le joueur n'a pas choisi son pseudo
     const run = async () => {
       lastPush = Date.now();
       await patch('players/' + S.uid, me());
