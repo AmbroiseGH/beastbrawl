@@ -3,6 +3,7 @@
 import { $, h, wait, fmt, clamp, lerp, rand, countTo, TEST } from '../core/utils.js';
 import { S, changed } from '../core/save.js';
 import { sfx, music, musicRestart } from '../core/audio.js';
+import { IMG } from '../core/assets.js';
 import { ANIMALS, TEAM_SLOTS, statsAt } from '../data/animals.js';
 import { COLS, ROWS, FH, GAP, CELL_PX, toPx, fromPx, cellCenter } from '../data/arena.js';
 import { makeBot, validTeam } from '../data/bots.js';
@@ -74,7 +75,7 @@ function enter(opp, mode) {
   B = { mode, opp, phase: 'place', mine, enemy: opp.units.map((u) => ({ ...u })), sim: null, acc: 0, speed: S.settings.speed || 1, scale: 1, banner: null, drag: null,
     paws: 0, t: 0, placeLeft: 45, vu: [], endT: 0, hp0: [1, 1], total: 0, fade: 1 };
   if (!mine.length) autoFill();
-  $('scrMenu').hidden = true; $('scrBattle').hidden = false; setBackdrop('assets/bg/arena.webp');
+  $('scrMenu').hidden = true; $('scrBattle').hidden = false; setBackdrop(IMG.arena);
   buildHud(); music(true); musicRestart();
   lastT = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(loop);
 }

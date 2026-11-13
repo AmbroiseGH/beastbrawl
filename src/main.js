@@ -4,7 +4,7 @@ import { load, S, changed } from './core/save.js';
 import { loadAll } from './core/assets.js';
 import { unlock, playFile, sfx } from './core/audio.js';
 import { fit } from './ui/stage.js';
-import { showMenu } from './ui/menu.js';
+import { showMenu, prepare } from './ui/menu.js';
 import './ui/pages.js';
 import './ui/social.js';
 import { wire, firstVisit } from './ui/popups.js';
@@ -64,6 +64,7 @@ async function boot() {
   const online = Net.init().catch(() => false);             // jeu en ligne : on se signale au serveur pendant le chargement
   await splash();
   await loading;
+  await prepare();                                           // décor des menus prêt à dessiner
   if (!TEST) await wait(Math.max(0, 1400 - (performance.now() - t0)));   // le temps de voir l'écran de chargement
   $('ldText').textContent = 'Prêt !';
   if (!TEST) await wait(350);

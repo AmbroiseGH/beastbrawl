@@ -26,7 +26,7 @@
   <div class="sp-hint" id="spHint" hidden>Touche l'écran</div>
 </div>
 
-<div id="backdrop"></div>
+<div id="backdrop"><canvas id="backdropCv"></canvas></div>
 <div id="app">
   <div id="stage">
     <!-- Chargement -->
@@ -38,7 +38,7 @@
 
     <!-- Menus (accueil, boutique, collection, clan, classé) -->
     <section id="scrMenu" class="screen" hidden>
-      <div id="menuBg"></div>
+      <canvas id="menuCv" width="941" height="1672"></canvas>
       <div id="slider"></div>
       <div id="pageFixed"></div>
       <div id="topbar">

@@ -9,7 +9,8 @@ input{font:inherit}
 [hidden]{display:none!important}
 
 /* fond flou derrière la scène (bandes sur les écrans plus hauts ou plus larges que 941 × 1672) */
-#backdrop{position:fixed;inset:-40px;background:#0b1430 center/cover no-repeat;filter:blur(26px) brightness(.55) saturate(1.2);transform:scale(1.08)}
+#backdrop{position:fixed;inset:-40px;background:#0b1430;transform:scale(1.08)}
+#backdropCv{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 #app{position:fixed;inset:0;overflow:hidden}
 #stage{position:absolute;left:0;top:0;width:941px;height:1672px;transform-origin:0 0;overflow:hidden;background:#0b1430;contain:layout paint}
 .screen{position:absolute;inset:0;overflow:hidden}

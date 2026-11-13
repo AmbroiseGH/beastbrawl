@@ -5,7 +5,7 @@ import { S, changed } from '../core/save.js';
 import { sfx } from '../core/audio.js';
 import { arenaOf } from '../data/economy.js';
 import { botLeaderboard } from '../data/bots.js';
-import { register, render, current } from './menu.js';
+import { register, render } from './menu.js';
 import { handlers } from './pages.js';
 import { modal, p, toast, ask, prompt } from './ui.js';
 import { Net } from '../online/net.js';
@@ -15,7 +15,7 @@ const hit = (x, y, w, hgt, onclick, label) => h('button', { class: 'hit', 'aria-
 const ctr = (x, y, cls, text) => h('div', { class: 'ctr t ' + cls, style: { left: x + 'px', top: y + 'px' } }, text);
 const ROLE = { chef: 'Chef', aine: 'Aîné', membre: 'Membre' };
 const fail = (e) => { sfx.error(); toast(e && e.message && !/serveur|fetch|abort|hors ligne/i.test(e.message) ? e.message : 'Connexion impossible. Réessaie dans un instant.'); };
-const again = (t) => { if (current() === t) render(); };
+const again = (t) => render(t);
 
 // Une ligne de joueur (classement, membres, amis)
 function row(pl, rank, opts = {}) {

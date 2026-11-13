@@ -38,7 +38,8 @@ puis ouvre http://localhost:8000 dans le navigateur.
 Adresses utiles pendant le développement :
 
 - `?debug=1` montre les zones cliquables des menus ;
-- `?test=1` saute l'écran du studio et les attentes.
+- `?test=1` saute l'écran du studio et les attentes ;
+- `?slide=3000` ralentit dix fois le glissement entre les pages des menus, pour le vérifier image par image.
 
 ## Activer le jeu en ligne (amis, clans, classement, combats contre d'autres joueurs)
 

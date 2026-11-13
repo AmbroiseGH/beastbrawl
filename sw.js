@@ -1,7 +1,7 @@
 // Beast Brawl! — service worker : le jeu reste jouable hors ligne une fois chargé.
 // Code (html, js, css) : réseau d'abord, pour recevoir les mises à jour tout de suite ; cache si hors ligne.
 // Images, sons, polices : la copie gardée d'abord (affichage immédiat), rafraîchie en arrière-plan.
-const VERSION = 'bb-v1';
+const VERSION = 'bb-v2';
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => {
