@@ -38,7 +38,7 @@ register('main', (pg) => {
   if (S.streak >= 2) pg.append(ctr(470, 1212, 'mn-streak sm', '🔥 Série de ' + S.streak + ' victoires'));
   const q = questsReady(); if (q) pg.append(badge(104, 596, q));
   if (!dailyReady()) pg.append(h('div', { style: { position: 'absolute', left: '872px', top: '594px', width: '60px', height: '60px', borderRadius: '50%', background: '#3b4a6b', border: '4px solid #1a2238' } }));
-  if (anyUpgrade()) pg.append(h('div', { class: 'badge t xs', style: { left: '300px', top: '1494px' } }, '!'));
+  if (anyUpgrade()) pg.append(h('div', { class: 'badge fixed t xs', style: { left: '300px', top: '1494px' } }, '!'));   // posée sur la barre du bas : ne glisse pas
 });
 
 // ---------- boutique ----------

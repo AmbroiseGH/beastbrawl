@@ -15,7 +15,8 @@ const IMAGES = {
 const UI_PRELOAD = ['btn_yellow', 'btn_green', 'btn_blue', 'btn_purple', 'btn_red', 'btn_stone', 'btn_wood', 'rib_blue', 'rib_red', 'rib_purple', 'rib_yellow',
   'ic_close', 'ic_ok', 'ic_info', 'ic_settings', 'ic_fast', 'ic_play', 'ic_pause', 'ic_back', 'ic_star', 'ic_crown', 'ic_shield_red', 'ic_shield_blue', 'ic_shield_swords',
   'frame_blue', 'frame_purple', 'frame_red', 'frame_stone', 'gem_blue', 'gem_green', 'gem_pink', 'gem_gold',
-  'av_tiger', 'av_gorilla', 'av_eagle', 'av_tiger2', 'av_bulldog', 'av_monkey', 'av_croc', 'av_orang', 'tab1_off', 'tab2_on', 'tab3_on', 'coll_bulldog_locked'];
+  'av_tiger', 'av_gorilla', 'av_eagle', 'av_tiger2', 'av_bulldog', 'av_monkey', 'av_croc', 'av_orang', 'tab1_off', 'tab2_on', 'tab3_on', 'coll_bulldog_locked',
+  'navpatch_shop', 'navpatch_collection', 'navpatch_main', 'navpatch_clan', 'navpatch_ranked'];
 const JSONS = { monkey: 'units/monkey.json', bulldog: 'units/bulldog.json', fx: 'fx/fx.json', font: 'fonts/bitmap.json' };
 
 function loadImage(src) {

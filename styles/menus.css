@@ -1,8 +1,12 @@
 /* Menus : la maquette fournie sert de fond, les vraies valeurs s'affichent par-dessus. */
 #menuBg{position:absolute;inset:0;background:center/100% 100% no-repeat}
-#page{position:absolute;inset:0}
-#page.pg-in{animation:pgIn .22s ease-out}
-@keyframes pgIn{from{opacity:.4;transform:scale(1.015)}to{opacity:1;transform:scale(1)}}
+/* Les pages glissent dans #slider (découpé par le code pour laisser les deux barres fixes) */
+#slider{position:absolute;inset:0;overflow:hidden;background:#0a0f22}
+.pane{position:absolute;inset:0;will-change:transform;backface-visibility:hidden}
+.pane .pbg{position:absolute;inset:0;background:center/100% 100% no-repeat}
+.pane .ppatch{position:absolute;background:center/100% 100% no-repeat}
+.pane .pg{position:absolute;inset:0}
+#pageFixed{position:absolute;inset:0;pointer-events:none}
 #nav{position:absolute;left:0;right:0;top:1500px;height:172px}
 #topbar{position:absolute;left:0;top:0;width:941px;height:84px}
 .tb-lvl{position:absolute;left:55px;top:41px;transform:translate(-50%,-50%);font-size:36px;-webkit-text-stroke-width:6px;text-shadow:0 3px 0 var(--ink)}
