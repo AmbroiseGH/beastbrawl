@@ -218,6 +218,35 @@ function onEvents(evs) {
       V.decal('bones', q.x, q.y + 8, 7, 0.5); V.shake = Math.max(V.shake, 9); B.stop = 0.06;
       V.trainer(mine ? 1 : 0, 1); V.trainer(mine ? 0 : 1, 2);
       if (!mine) { B.paws += 2; V.fx('paw_burst', q.x, q.y - 80, { s0: 0.3, s1: 0.62, life: 0.9, vy: -140, fade: 0.3 }); V.burst('coins_small', q.x, q.y - 40, 3, { s: 0.3, up: 260, g: 800 }); sfx.coin(B.paws % 5); const el = $('bPaws'); if (el) { el.innerHTML = `+${B.paws}<i class="ico paw"></i>`; el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); } }
+    } else if (e.type === 'flank') {                 // contourne : petit nuage de poussière au démarrage
+      const u = b.units[e.uid], q = toPx(e.x, e.y);
+      V.fx('dust_dash', q.x - u.fx * 40, q.y - 6 - u.fy * 30, { s0: 0.22, s1: 0.4, life: 0.35, rot: Math.atan2(-u.fy, -u.fx), a: 0.85 });
+    } else if (e.type === 'help') {                  // en renfort
+      const q = toPx(e.x, e.y); sfx.help();
+      V.fx('exclaim', q.x, q.y - 150, { s0: 0.12, s1: 0.2, life: 0.6, vy: -40 });
+      V.text('RENFORT', q.x, q.y - 112, { size: 21, tint: 'green', life: 0.8, vy: -60 });
+    } else if (e.type === 'roar') {                  // grondement du Protecteur : les attaquants se tournent vers lui
+      const q = toPx(e.x, e.y); sfx.roar(); V.shake = Math.max(V.shake, 7);
+      V.fx('ring_red', q.x, q.y, { s0: 0.3, s1: 1.15, life: 0.5, flat: 0.55, a: 0.95 });
+      V.text('GRRR', q.x, q.y - 120, { size: 34, tint: 'red', life: 0.8, vy: -70, pop: 1.4 });
+      for (const id of e.uids) { const t = b.units[id], p = toPx(t.x, t.y); V.fx('exclaim', p.x, p.y - 140, { s0: 0.1, s1: 0.18, life: 0.7, vy: -30, delay: 0.08 }); }
+    } else if (e.type === 'flee') {                  // il s'enfuit
+      const u = b.units[e.uid], q = toPx(e.x, e.y); sfx.flee();
+      V.text('FUITE', q.x, q.y - 112, { size: 22, tint: 'blue', life: 0.75, vy: -70 });
+      V.fx('dust_dash', q.x, q.y - 8, { s0: 0.3, s1: 0.55, life: 0.4, rot: Math.atan2(u.fy, u.fx) });
+    } else if (e.type === 'rally') {                 // il revient se battre
+      const q = toPx(e.x, e.y); sfx.rally();
+      V.text('RETOUR', q.x, q.y - 112, { size: 22, tint: 'yellow', life: 0.8, vy: -70 });
+      if (e.gain > 0) { V.text('+' + e.gain, q.x + 50, q.y - 70, { size: 24, tint: 'green', life: 0.9, vy: -80 }); V.burst('heal_plus', q.x, q.y - 60, 4, { s: 0.14, sp0: 60, sp1: 160, up: 160, g: 0, life: 1.2 }); }
+    } else if (e.type === 'cornered') {              // acculé : il se retourne, enragé
+      const q = toPx(e.x, e.y); sfx.rage(); V.shake = Math.max(V.shake, 5);
+      V.text('ACCULÉ', q.x, q.y - 112, { size: 26, tint: 'orange', life: 0.85, vy: -70, pop: 1.3 });
+      V.fx('fire1', q.x, q.y - 40, { s0: 0.15, s1: 0.32, life: 0.5, vy: -60 });
+    } else if (e.type === 'avenge') {                // un compagnon est tombé : les proches enragent
+      sfx.rage();
+      e.uids.forEach((id, i) => { const t = b.units[id], p = toPx(t.x, t.y); V.fx('fire1', p.x, p.y - 60, { s0: 0.1, s1: 0.3, life: 0.55, vy: -90, delay: 0.1 + i * 0.05 }); if (i === 0) V.text('VENGEANCE', p.x, p.y - 118, { size: 22, tint: 'red', life: 0.9, vy: -60 }); });
+    } else if (e.type === 'miss') {                  // la cible s'est sauvée avant le coup
+      const q = toPx(e.x, e.y); V.text('RATÉ', q.x, q.y - 100, { size: 18, tint: 'grey', life: 0.55, vy: -60 });
     } else if (e.type === 'fury') { sfx.fury(); B.banner = { str: 'FUREUR', size: 130, age: 0, life: 1.3, tint: 'red' }; B.furyOn = true; V.trainer(0, 3); V.trainer(1, 3); }
     else if (e.type === 'end') {
       B.phase = 'over'; B.endT = 0; B.win = e.winner === 0;
@@ -275,6 +304,7 @@ function loop(now) {
     for (const u of B.sim.units) {
       const v = B.vu[u.uid], q = toPx(lerp(u.px, u.x, a), lerp(u.py, u.y, a));
       v.px = q.x; v.py = q.y; v.fx = u.fx; v.fy = u.fy; v.moving = u.moving; v.hpRatio = u.hp / u.maxHp; v.stun = u.stun > 0; v.dead = u.dead; v.win = u.state === 'win';
+      if (!u.dead && B.phase === 'fight') aura(v, u, dt);
       v.atk = u.atkT >= 0 && u.atk ? { anim: u.atk.anim, t: u.atkT + a * TICK, dur: u.atk.dur, special: u.atk === u.s.attacks.special } : null;
       if (u.dead) v.deadAge += dt; if (!u.dead || v.deadAge < 0.5) m.units.push(v);
     }
@@ -289,6 +319,15 @@ function loop(now) {
   m.banner = B.banner;
   V.draw(dt, m);
 }
+// Signes qui durent : poussière des sprints et des fuites, flammes de la rage, croix du souffle repris
+function aura(v, u, dt) {
+  v.fxT = (v.fxT || 0) - dt * B.speed;
+  if (v.fxT > 0) return;
+  if (u.moving && (u.boostT > 0 || u.mode === 'flee')) { V.fx('dust_dash', v.px - u.fx * 36, v.py - 4 - u.fy * 26, { s0: 0.16, s1: 0.3, life: 0.3, rot: Math.atan2(-u.fy, -u.fx), a: 0.7 }); v.fxT = 0.12; }
+  else if (u.rageT > 0) { V.fx('fire1', v.px + rand(-22, 22), v.py - rand(30, 70), { s0: 0.1, s1: 0.04, life: 0.45, vy: -110, a: 0.85 }); v.fxT = 0.14; }
+  else if (u.breath) { V.fx('heal_plus', v.px + rand(-26, 26), v.py - rand(60, 100), { s0: 0.1, s1: 0.06, life: 0.6, vy: -70 }); v.fxT = 0.3; }
+}
+
 function hudHp() {
   const b = B.sim, top = document.querySelector('.plate.top .hp'), bot = document.querySelector('.plate.bot .hp');
   for (const [el, side] of [[top, 1], [bot, 0]]) {

@@ -11,6 +11,7 @@
 //   dodge     : chance d'esquiver un coup normal
 //   knock     : recul infligé à la cible (cases)
 //   taunt     : true = « Protecteur », les ennemis proches le visent en priorité
+//   flee      : sous cette part de ses PV, il s'enfuit s'il est en train de perdre son duel (0 = jamais)
 //   attacks   : normal (à chaque coup) et special (un coup sur « every »)
 //       anim    : animation de la planche (atk1 ou atk2)
 //       dur     : durée de l'animation (s) ; windup : moment où le coup porte (s)
@@ -22,23 +23,23 @@
 export const ANIMALS = {
   monkey: {
     name: 'Singe', role: 'Attaquant', slots: 1, price: 10000, starter: true,
-    hp: 800, dmg: 66, atkEvery: 0.62, range: 0.2, speed: 1.9, radius: 0.3, crit: 0.18, dodge: 0.1, knock: 0.05, taunt: false,
+    hp: 800, dmg: 66, atkEvery: 0.62, range: 0.2, speed: 1.9, radius: 0.3, crit: 0.18, dodge: 0.1, knock: 0.05, taunt: false, flee: 0.35,
     attacks: {
       normal: { anim: 'atk1', name: 'Coup de queue', dur: 0.44, windup: 0.2, mult: 1, splash: 0.35, splashR: 0.95 },
       special: { anim: 'atk2', name: 'Coup du poirier', every: 4, dur: 0.6, windup: 0.36, mult: 2.4, knock: 0.3 },
     },
     desc: 'Rapide et teigneux. Sa queue fouette tous les ennemis autour de lui.',
-    talent: 'Agile : attaque très vite, esquive parfois, et son 4ᵉ coup est un coup du poirier dévastateur.',
+    talent: 'Agile : attaque très vite, esquive parfois, et son 4ᵉ coup est un coup du poirier dévastateur. Blessé, il file se cacher derrière un allié pour reprendre son souffle.',
   },
   bulldog: {
     name: 'Bulldog', role: 'Tank', slots: 1, price: 15000, starter: false,
-    hp: 1500, dmg: 58, atkEvery: 1.1, range: 0.2, speed: 1.3, radius: 0.36, crit: 0.08, dodge: 0, knock: 0.08, taunt: true,
+    hp: 1500, dmg: 58, atkEvery: 1.1, range: 0.2, speed: 1.3, radius: 0.36, crit: 0.08, dodge: 0, knock: 0.08, taunt: true, flee: 0.15,
     attacks: {
       normal: { anim: 'atk1', name: 'Morsure', dur: 0.55, windup: 0.3, mult: 1 },
       special: { anim: 'atk2', name: 'Roulade', every: 3, dur: 0.8, windup: 0.42, mult: 1.6, aoe: 1.0, aoeMult: 0.7, knock: 0.5, stun: 0.7 },
     },
     desc: 'Un mur de muscles. Il encaisse en première ligne et mord fort.',
-    talent: 'Protecteur : les ennemis proches le visent en priorité. Son 3ᵉ coup est une roulade qui étourdit.',
+    talent: 'Protecteur : les ennemis proches le visent en priorité, et il gronde pour détourner ceux qui malmènent un allié. Son 3ᵉ coup est une roulade qui étourdit.',
   },
 };
 

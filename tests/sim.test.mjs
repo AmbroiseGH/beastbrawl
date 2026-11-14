@@ -1,5 +1,5 @@
 // Vérifie la simulation : elle se termine toujours, elle est déterministe et équitable.
-import { runBattle } from '../src/game/sim.js';
+import { runBattle, createBattle, step } from '../src/game/sim.js';
 import { COLS, ROWS } from '../src/data/arena.js';
 import { makeRng } from '../src/core/rng.js';
 
@@ -31,7 +31,16 @@ console.log(`miroir : durée moyenne ${(total / N).toFixed(1)} s (min ${minT.toF
 ok(wins0 / N > 0.42 && wins0 / N < 0.58, 'équité des deux camps');
 ok(maxT < 60, 'aucun combat de plus de 60 s');
 
-// 3. le placement et la composition comptent : comparaison de quelques formations
+// 3. les animaux contournent, se portent secours, fuient et reviennent
+const seen = {};
+for (let i = 0; i < 150; i++) {
+  const a = randomTeam(), c = randomTeam(), b = createBattle([a, c], 3000 + i);
+  while (!b.over && b.tick < 3600) { step(b); for (const e of b.events) seen[e.type] = (seen[e.type] || 0) + 1; b.events.length = 0; }
+}
+console.log('comportements sur 150 combats :', ['flank', 'help', 'roar', 'flee', 'rally', 'cornered', 'avenge'].map((k) => k + ' ' + (seen[k] || 0)).join(', '));
+for (const k of ['flank', 'help', 'roar', 'flee', 'rally', 'avenge']) ok(seen[k] > 0, 'comportement « ' + k + ' » jamais vu');
+
+// 4. le placement et la composition comptent : comparaison de quelques formations
 const forms = {
   'classique (3 bulldogs devant, 2 singes derrière)': classic,
   'singes devant': T('m:1,0 m:3,0 b:1,2 b:2,2 b:3,2'),

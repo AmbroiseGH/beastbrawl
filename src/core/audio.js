@@ -47,6 +47,12 @@ export const sfx = {
   roll() { noise({ t: 0.4, v: 0.45, f: 300, f2: 90 }); tone({ f: 90, f2: 45, t: 0.4, type: 'sine', v: 0.6 }); },
   whoosh() { noise({ t: 0.18, v: 0.16, f: 500, f2: 3000, type: 'bandpass', q: 1.2 }); },
   dodge() { noise({ t: 0.14, v: 0.15, f: 2500, f2: 800, type: 'bandpass', q: 2 }); },
+  // comportements des animaux en combat
+  help() { tone({ f: 520, f2: 780, t: 0.09, type: 'square', v: 0.09 }); tone({ f: 780, f2: 1040, t: 0.12, type: 'square', v: 0.09, at: 0.08 }); },
+  roar() { tone({ f: 95, f2: 60, t: 0.5, type: 'sawtooth', v: 0.26 }); tone({ f: 140, f2: 80, t: 0.45, type: 'sawtooth', v: 0.14, at: 0.03 }); noise({ t: 0.5, v: 0.3, f: 420, f2: 160, q: 3 }); },
+  flee() { tone({ f: 1100, f2: 1500, t: 0.07, type: 'triangle', v: 0.14 }); tone({ f: 1400, f2: 700, t: 0.14, type: 'triangle', v: 0.14, at: 0.07 }); noise({ t: 0.16, v: 0.1, f: 900, f2: 2600, type: 'bandpass', q: 1.2 }); },
+  rally() { [0, 4, 7].forEach((s, k) => tone({ f: 587 * Math.pow(2, s / 12), t: 0.12, type: 'triangle', v: 0.18, at: k * 0.06 })); },
+  rage() { tone({ f: 160, f2: 320, t: 0.3, type: 'sawtooth', v: 0.16 }); noise({ t: 0.3, v: 0.22, f: 300, f2: 1800 }); },
   death(mine) { noise({ t: 0.3, v: 0.35, f: 700, f2: 120 }); tone({ f: mine ? 330 : 520, f2: mine ? 110 : 180, t: 0.3, type: 'triangle', v: 0.3 }); },
   coin(i = 0) { tone({ f: 1320 + i * 60, t: 0.07, type: 'square', v: 0.1 }); tone({ f: 1760 + i * 60, t: 0.12, type: 'square', v: 0.1, at: 0.05 }); },
   star(i = 0) { [0, 4, 7, 12].forEach((s, k) => tone({ f: 523 * Math.pow(2, (s + i * 2) / 12), t: 0.22, type: 'triangle', v: 0.26, at: k * 0.045 })); noise({ t: 0.25, v: 0.12, f: 5000, type: 'highpass' }); },

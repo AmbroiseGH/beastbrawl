@@ -9,14 +9,18 @@ Un jeu Michigan.
 
 1. Avant chaque combat, tu places tes animaux sur les carrés bleus de ton côté de l'arène (5 slots d'équipe).
 2. Tu appuies sur « Combattre ! » : les animaux se battent tout seuls jusqu'à ce qu'une équipe soit entièrement K.-O.
+   Ils ne foncent pas bêtement : bloqués derrière un allié, ils le contournent ou vont chercher un autre adversaire ;
+   ils courent en renfort d'un allié en difficulté ; blessés et en train de perdre, ils fuient se cacher derrière un
+   allié pour reprendre leur souffle, puis reviennent (acculés, ils enragent) ; quand un compagnon tombe, ceux qui
+   sont à côté veulent le venger. Tous les réglages de ces comportements sont dans `AI`, en haut de `src/game/sim.js`.
 3. Tu gagnes des pièces, des pattes, des rubis, de l'expérience et des trophées, tu améliores tes animaux et tu montes d'arène.
 
 Deux animaux sont jouables dans cette V1 :
 
 | Animal | Rôle | Particularité |
 | --- | --- | --- |
-| Singe | Attaquant | Frappe très vite, sa queue touche tous les ennemis autour de lui, esquive parfois. Son 4ᵉ coup est un coup du poirier. |
-| Bulldog | Tank | Beaucoup de points de vie, attire les coups des ennemis proches. Son 3ᵉ coup est une roulade qui étourdit. |
+| Singe | Attaquant | Frappe très vite, sa queue touche tous les ennemis autour de lui, esquive parfois. Son 4ᵉ coup est un coup du poirier. Il fuit volontiers quand il est blessé. |
+| Bulldog | Tank | Beaucoup de points de vie, attire les coups des ennemis proches. Venu en renfort, il gronde pour détourner les attaquants d'un allié. Son 3ᵉ coup est une roulade qui étourdit. |
 
 Les huit autres animaux de la boutique sont annoncés « Bientôt ».
 
