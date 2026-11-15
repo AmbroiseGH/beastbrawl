@@ -1,24 +1,26 @@
-// Chargement des images, des atlas et des sons avant d'entrer dans le jeu.
+// Chargement des images et des atlas. Le nécessaire des menus est chargé au démarrage ; les grosses planches
+// (animaux en combat, coffres, révélations, arènes) sont chargées à la demande avec ensure(), puis gardées.
+import { ANIMAL_IDS } from '../data/animals.js';
+import { CHEST_IDS } from '../data/cards.js';
+
 export const IMG = {};     // images par nom
 export const DATA = {};    // fichiers json par nom
 
-const IMAGES = {
-  arena: 'bg/arena.webp', bgMain: 'bg/main.webp', bgShop: 'bg/shop.webp', bgCollection: 'bg/collection.webp', bgClan: 'bg/clan.webp', bgRanked: 'bg/ranked.webp',
-  monkey: 'units/monkey.webp', bulldog: 'units/bulldog.webp', trainerRed: 'units/trainer_red.webp', trainerBlue: 'units/trainer_blue.webp',
+const BOOT_IMAGES = {
+  bgMain: 'bg/main2.webp', bgShop: 'bg/shop2.webp', bgCollection: 'bg/collection.webp', bgClan: 'bg/clan.webp', bgRanked: 'bg/ranked.webp',
   fx: 'fx/fx.webp', font: 'fonts/bitmap.webp',
-  sqBlue: 'ui/square_blue.webp', sqRed: 'ui/square_red.webp', sqGold: 'ui/square_gold.webp', sqGreen: 'ui/square_green.webp',
-  cardMonkey: 'ui/card_monkey.webp', cardBulldog: 'ui/card_bulldog.webp',
-  endVictory: 'ui/end_victory.webp', endDefeat: 'ui/end_defeat.webp', star1: 'ui/end_star1.webp', star2: 'ui/end_star2.webp', star3: 'ui/end_star3.webp',
-  logo: 'ui/logo.webp', ptRed: 'ui/pt_red_happy.webp', ptRedSad: 'ui/pt_red_surprised.webp', ptRedThink: 'ui/pt_red_think.webp', ptBlue: 'ui/pt_blue.webp',
-  coin: 'ui/cur_coin.webp', paw: 'ui/cur_paw.webp', ruby: 'ui/cur_ruby.webp', xp: 'ui/cur_xp.webp', trophy: 'ui/ic_trophy.webp', lock: 'ui/ic_lock.webp',
+  coin: 'ui/cur_coin.webp', paw: 'ui/cur_paw.webp', ruby: 'ui/cur_ruby.webp', xp: 'ui/cur_xp.webp', trophy: 'ui/ic_trophy.webp', lock: 'ui/ic_lock.webp', star: 'ui/ic_star.webp',
+  ...Object.fromEntries(ANIMAL_IDS.map((id) => ['card_' + id, 'cards/' + id + '.webp'])),
+  ...Object.fromEntries(ANIMAL_IDS.map((id) => ['pt_' + id, 'portraits/' + id + '.webp'])),
+  ...Object.fromEntries(CHEST_IDS.map((id) => ['chest_' + id, 'chests/icon_' + id + '.webp'])),
 };
 const UI_PRELOAD = ['btn_yellow', 'btn_green', 'btn_blue', 'btn_purple', 'btn_red', 'btn_stone', 'btn_wood', 'rib_blue', 'rib_red', 'rib_purple', 'rib_yellow',
-  'ic_close', 'ic_ok', 'ic_info', 'ic_settings', 'ic_fast', 'ic_play', 'ic_pause', 'ic_back', 'ic_star', 'ic_crown', 'ic_shield_red', 'ic_shield_blue', 'ic_shield_swords',
-  'frame_blue', 'frame_purple', 'frame_red', 'frame_stone', 'gem_blue', 'gem_green', 'gem_pink', 'gem_gold',
-  'av_tiger', 'av_gorilla', 'av_eagle', 'av_tiger2', 'av_bulldog', 'av_monkey', 'av_croc', 'av_orang', 'tab1_off', 'tab2_on', 'tab3_on', 'coll_bulldog_locked',
+  'ic_close', 'ic_ok', 'ic_info', 'ic_settings', 'ic_play', 'ic_back', 'ic_crown', 'ic_shield_red', 'ic_shield_blue', 'ic_target',
+  'av_tiger', 'av_gorilla', 'av_eagle', 'av_tiger2', 'av_bulldog', 'av_monkey', 'av_croc', 'av_orang', 'order_whistle', 'order_attack',
   ...['shop', 'collection', 'main', 'clan', 'ranked'].flatMap((t) => ['navcap_' + t, 'navring_' + t, 'navfill_' + t])];
-const JSONS = { monkey: 'units/monkey.json', bulldog: 'units/bulldog.json', fx: 'fx/fx.json', font: 'fonts/bitmap.json' };
+const BOOT_JSONS = { fx: 'fx/fx.json', font: 'fonts/bitmap.json', arena: 'arena/arena.json', chestMeta: 'chests/meta.json', revealMeta: 'cards/reveal_meta.json' };
 
+const pending = {};
 function loadImage(src) {
   return new Promise((res) => {
     const im = new Image();
@@ -27,13 +29,33 @@ function loadImage(src) {
     im.src = src;
   });
 }
+// Charge une image une seule fois (les appels suivants attendent le même chargement)
+export function image(key, path) {
+  if (IMG[key]) return Promise.resolve(IMG[key]);
+  return pending[key] || (pending[key] = loadImage('assets/' + path).then((im) => { IMG[key] = im; delete pending[key]; return im; }));
+}
+export function json(key, path) {
+  if (DATA[key]) return Promise.resolve(DATA[key]);
+  return pending['j:' + key] || (pending['j:' + key] = fetch('assets/' + path).then((r) => r.json()).then((j) => { DATA[key] = j; return j; }).catch((e) => { console.warn('json manquant :', key, e); return null; }).finally(() => delete pending['j:' + key]));
+}
+// Ce qu'il faut pour dessiner un animal en combat (hd : la grande planche de l'aperçu de la collection)
+// (?v=2 : les planches du Singe et du Bulldog ont changé de forme, l'ancienne copie gardée hors ligne ne doit pas servir)
+export const unitAssets = (id, hd) => { const k = hd ? id + '_hd' : id; return Promise.all([image(k, 'units/' + k + '.webp?v=2'), json(k, 'units/' + k + '.json?v=2')]); };
+// Le décor d'une arène : terrain, six structures et leurs ruines, barre du bas
+export function arenaAssets(n) {
+  const jobs = [image('field' + n, 'arena/field' + n + '.webp'), image('hud', 'arena/hud.webp'), image('shield', 'arena/shield.webp'), image('crownRed', 'arena/crown_red.webp'), image('crownBlue', 'arena/crown_blue.webp')];
+  for (const s of ['e_main', 'e_left', 'e_right', 'p_left', 'p_right', 'p_main']) jobs.push(image(`a${n}_${s}`, `arena/a${n}_${s}.webp`), image(`a${n}_${s}_ruin`, `arena/a${n}_${s}_ruin.webp`));
+  return Promise.all(jobs);
+}
+export const chestAssets = (tier) => image('sheet_' + tier, 'chests/' + tier + '.webp');
+export const revealAssets = (r) => image('reveal_' + r, 'cards/reveal_' + r + '.webp');
 
 // onProgress(0…1). Ne rejette jamais : une image manquante n'empêche pas de jouer.
 export async function loadAll(onProgress) {
   const jobs = [];
-  for (const k in IMAGES) jobs.push(loadImage('assets/' + IMAGES[k]).then((im) => { IMG[k] = im; }));
-  for (const n of UI_PRELOAD) jobs.push(loadImage('assets/ui/' + n + '.webp').then((im) => { IMG[n] = im; }));
-  for (const k in JSONS) jobs.push(fetch('assets/' + JSONS[k]).then((r) => r.json()).then((j) => { DATA[k] = j; }).catch((e) => console.warn('json manquant :', k, e)));
+  for (const k in BOOT_IMAGES) jobs.push(image(k, BOOT_IMAGES[k]));
+  for (const n of UI_PRELOAD) jobs.push(image(n, 'ui/' + n + '.webp'));
+  for (const k in BOOT_JSONS) jobs.push(json(k, BOOT_JSONS[k]));
   if (document.fonts && document.fonts.load) jobs.push(document.fonts.load('40px "Lilita One"').catch(() => {}));
   let done = 0;
   await Promise.all(jobs.map((j) => j.then(() => { done++; onProgress && onProgress(done / jobs.length); })));

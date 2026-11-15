@@ -143,7 +143,7 @@ function clanFight() {
 // Défi amical : on affronte l'équipe enregistrée de l'autre joueur
 export function challenge(uid) {
   Net.player(uid).then((pl) => {
-    if (!pl || !pl.units.length) return toast('Ce joueur n\'a pas encore d\'équipe enregistrée.');
+    if (!pl || !pl.deck.length) return toast('Ce joueur n\'a pas encore de deck enregistré.');
     startFight({ mode: 'friendly', opp: pl });
   }).catch(fail);
 }

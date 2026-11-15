@@ -1,9 +1,9 @@
-// Les menus : barre du haut (niveau, pièces, pattes, rubis), barre du bas, et les pages entre les deux.
+// Les menus : barre du haut (niveau, pièces, pattes, gemmes), barre du bas, et les pages entre les deux.
 // Les cinq pages sont rangées côte à côte, dans l'ordre de la barre du bas. On passe de l'une à l'autre en faisant
 // glisser la rangée, au doigt ou en touchant la barre du bas : les deux barres restent fixes.
 import { $, h, fmt, fmtShort, clamp } from '../core/utils.js';
 import { S, onChange } from '../core/save.js';
-import { sfx } from '../core/audio.js';
+import { sfx, music } from '../core/audio.js';
 import { IMG } from '../core/assets.js';
 import { xpNeed } from '../data/economy.js';
 import { W, H, view, onResize, setBackdrop, warmBackdrop } from './stage.js';
@@ -216,6 +216,7 @@ export function go(t, silent) {
 export function showMenu(t = 'main') {
   $('scrLoading').hidden = true; $('scrBattle').hidden = true; $('scrMenu').hidden = false;
   go(t, true);
+  music('menu');
 }
 
 // ---------- changer de page au doigt ----------

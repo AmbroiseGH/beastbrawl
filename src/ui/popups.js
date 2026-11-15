@@ -2,14 +2,15 @@
 import { h, fmt, today } from '../core/utils.js';
 import { S, changed, reset } from '../core/save.js';
 import { sfx, music } from '../core/audio.js';
-import { ARENA_MAX, arenaOf, arenaRange, DAILY, EXCHANGE } from '../data/economy.js';
+import { ARENA_MAX, ARENAS, arenaOf, arenaRange, DAILY, EXCHANGE } from '../data/economy.js';
 import { AVATARS } from '../data/bots.js';
-import { dailyQuests, starterQuests, claimQuest, dailyReady, dailyStep, claimDaily, grant } from '../game/progress.js';
+import { dailyQuests, starterQuests, claimQuest, dailyReady, dailyStep, claimDaily, grant, welcomeChest } from '../game/progress.js';
 import { onAction, render } from './menu.js';
 import { handlers, celebrate } from './pages.js';
 import { modal, p, toast, ask, prompt, fly, rewardHtml, TARGET } from './ui.js';
 import { startFight } from './battle.js';
 import { friendsPopup } from './social.js';
+import { openChestAnim } from './chest.js';
 import { Net } from '../online/net.js';
 
 // Montre des gains : les icônes volent vers les compteurs du haut
@@ -59,9 +60,11 @@ export function roadPopup() {
   const cur = arenaOf(S.trophies), rows = [];
   for (let a = ARENA_MAX; a >= 1; a--) {
     const [lo] = arenaRange(a);
-    rows.push(h('div', { class: 'ar t sm' + (a === cur ? ' cur' : a < cur ? ' done' : '') }, h('div', { class: 'n' }, 'Arène ' + a + (a === cur ? '  ◀ tu es ici' : '')), h('i'), fmt(lo) + (a === ARENA_MAX ? ' +' : '')));
+    rows.push(h('div', { class: 'ar' + (a === cur ? ' cur' : a < cur ? ' done' : a > cur ? ' lock' : ''), style: { backgroundImage: `url('assets/arena/field${a}.webp')` } },
+      h('div', { class: 'n' }, h('div', { class: 't sm' }, 'Arène ' + a + ' · ' + ARENAS[a - 1].name), h('div', { class: 't xs cream' }, a === cur ? 'Tu es ici !' : a < cur ? 'Débloquée' : 'À débloquer')),
+      h('div', { class: 'tr t sm' }, h('i'), fmt(lo) + (a === ARENA_MAX ? ' +' : ''))));
   }
-  modal({ title: 'Route des trophées', body: [p(`Tu as <span style="color:var(--gold)">${fmt(S.trophies)}</span><i class="ico trophy"></i> (record : ${fmt(S.best)}). Chaque arène augmente les pièces gagnées.`, 'small'), h('div', { class: 'road' }, rows)] });
+  modal({ title: 'Route des trophées', body: [p(`Tu as <span style="color:var(--gold)">${fmt(S.trophies)}</span><i class="ico trophy"></i> (record : ${fmt(S.best)}). Chaque arène a son décor, sa musique, et rapporte plus de pièces.`, 'small'), h('div', { class: 'road' }, rows)] });
 }
 
 // ---------- succès ----------
@@ -69,25 +72,25 @@ export function statsPopup() {
   const st = (l, v) => h('div', { class: 'stat t xs' }, l, h('b', null, v));
   const rate = S.fights ? Math.round(S.wins / S.fights * 100) + ' %' : '-';
   modal({ title: 'Succès', color: 'yellow', body: [h('div', { class: 'stats' }, st('Combats', fmt(S.fights)), st('Victoires', fmt(S.wins)), st('Taux de victoire', rate), st('Meilleure série', fmt(S.bestStreak)),
-    st('Animaux K.-O.', fmt(S.kos)), st('Étoiles gagnées', fmt(S.stars)), st('Record de trophées', fmt(S.best)), st('Améliorations', fmt(S.upgrades)))] });
+    st('Animaux K.-O.', fmt(S.kos)), st('Couronnes', fmt(S.crowns)), st('Record de trophées', fmt(S.best)), st('Améliorations', fmt(S.upgrades)), st('Cages ouvertes', fmt(S.opened)), st('Animaux', Object.keys(S.cards).length + ' / 10'))] });
 }
 
 // ---------- paramètres ----------
 export function settingsPopup() {
-  const tog = (label, key) => { const sw = h('div', { class: 'switch' + (S.settings[key] ? ' on' : '') }); return h('button', { class: 'card toggle t sm', style: { width: '100%' }, onclick: () => { S.settings[key] = !S.settings[key]; sw.classList.toggle('on', S.settings[key]); changed(); if (key === 'music') music(false); sfx.click(); } }, label, sw); };
+  const tog = (label, key) => { const sw = h('div', { class: 'switch' + (S.settings[key] ? ' on' : '') }); return h('button', { class: 'card toggle t sm', style: { width: '100%' }, onclick: () => { S.settings[key] = !S.settings[key]; sw.classList.toggle('on', S.settings[key]); changed(); if (key === 'music') music('menu'); sfx.click(); } }, label, sw); };
   const m = modal({ title: 'Paramètres', body: [tog('Bruitages', 'sfx'), tog('Musique', 'music'),
     h('div', { class: 'row' },
       h('button', { class: 'btn blue small t sm', onclick: () => { sfx.click(); m.close(); howTo(); } }, 'Comment jouer'),
       h('button', { class: 'btn purple small t sm', onclick: async () => { sfx.click(); const v = await prompt('Ton pseudo', '', S.name, 14); if (v) { S.name = v; changed(); Net.pushProfile(); } } }, 'Changer de pseudo'),
       h('button', { class: 'btn red small t sm', onclick: async () => { sfx.click(); if (await ask('Tout effacer ?', 'Ta progression sera perdue pour de bon.', 'Effacer', 'Annuler')) { reset(); location.reload(); } } }, 'Recommencer')),
-    p(`Beast Brawl! version 1.0<br>Un jeu Michigan · ${Net.online() ? 'Connecté au serveur en ligne' : 'Mode hors ligne'}`, 'small')] });
+    p(`Beast Brawl! version 2.0<br>Bruitages créés avec soundza.com<br>Un jeu Michigan · ${Net.online() ? 'Connecté au serveur en ligne' : 'Mode hors ligne'}`, 'small')] });
 }
 export function howTo() {
   modal({ title: 'Comment jouer', color: 'purple', body: [
-    p('1. Avant chaque combat, place tes animaux sur les <span style="color:#8fdcff">carrés bleus</span> de ton côté de l\'arène. Ton équipe compte 5 slots.'),
-    p('2. Appuie sur <span style="color:var(--gold)">Combattre !</span> Les animaux se battent tout seuls jusqu\'à ce qu\'une équipe soit entièrement K.-O.'),
-    p('3. Le <b>Bulldog</b> encaisse et attire les coups, le <b>Singe</b> frappe vite tout ce qui l\'entoure. À toi de trouver le bon placement !'),
-    p('4. Gagne des pièces, des pattes et des trophées, améliore tes animaux dans la Collection et grimpe d\'arène en arène.', 'small')], buttons: [{ label: 'Compris !', color: 'green' }] });
+    p('1. Le combat dure 3 minutes. Glisse une de tes 4 cartes sur ton côté de l\'arène pour poser l\'animal. Chaque carte coûte de l\'<span style="color:#ff8af0">Aura</span>, qui se recharge toute seule.'),
+    p('2. Tes animaux foncent vers les tours adverses. Une tour cassée = 1 couronne. Casse la <span style="color:var(--gold)">structure principale</span> pour gagner tout de suite !'),
+    p('3. <b>Siffler</b> rappelle tes animaux pour défendre ton camp. <b>Attaquer</b> : touche ensuite un endroit, une tour ou un animal, et tes animaux foncent dessus.'),
+    p('4. Les victoires rapportent des cages. Ouvre-les pour trouver de nouveaux animaux et des cartes pour les améliorer dans la Collection.', 'small')], buttons: [{ label: 'Compris !', color: 'green' }] });
 }
 
 // ---------- profil ----------
@@ -102,17 +105,17 @@ export function profilePopup() {
 // ---------- boutons « + » ----------
 export function exchangePopup(kind) {
   if (kind === 'rubies') {
-    modal({ title: 'Rubis', color: 'red', body: [p('Les rubis se gagnent en jouant :'), p('• 1 rubis par victoire à 3 étoiles<br>• 5 rubis pour la première victoire du jour<br>• les quêtes, le cadeau du jour et chaque niveau gagné', 'small'),
-      p('Ils s\'échangent contre des pièces ou des pattes avec les boutons «&nbsp;+&nbsp;».', 'small')], buttons: [{ label: 'Voir les quêtes', color: 'purple', onclick: questsPopup }] });
+    modal({ title: 'Gemmes', color: 'red', body: [p('Les gemmes se gagnent en jouant :'), p('• 1 gemme par victoire à 3 couronnes<br>• 5 gemmes pour la première victoire du jour<br>• les quêtes, le cadeau du jour, chaque niveau gagné et les grandes cages', 'small'),
+      p('Elles ouvrent les cages tout de suite, achètent des cages dans la boutique, et s\'échangent contre des pièces ou des pattes avec les boutons «&nbsp;+&nbsp;».', 'small')], buttons: [{ label: 'Voir les quêtes', color: 'purple', onclick: questsPopup }] });
     return;
   }
   const isC = kind === 'coins', ico = isC ? 'coin' : 'paw';
   const rows = EXCHANGE[kind].map((o) => h('div', { class: 'card q' }, h('div', { class: 'txt' }, h('div', { class: 't sm', style: { fontSize: '40px' }, html: `${fmt(o.get)}<i class="ico ${ico}"></i>` })),
     h('button', { class: 'btn small t sm ' + (S.rubies >= o.rubies ? 'green' : 'stone'), html: `${o.rubies}<i class="ico ruby"></i>`, onclick: () => {
-      if (S.rubies < o.rubies) { sfx.error(); toast('Pas assez de rubis.'); return; }
+      if (S.rubies < o.rubies) { sfx.error(); toast('Pas assez de gemmes.'); return; }
       grant({ rubies: -o.rubies, [isC ? 'coins' : 'paws']: o.get }); sfx.buy(); showGain({ [isC ? 'coins' : 'paws']: o.get }); m.close();
     } })));
-  const m = modal({ title: isC ? 'Pièces' : 'Pattes', color: 'yellow', body: [p(`Échange tes rubis (tu en as ${fmt(S.rubies)}<i class="ico ruby"></i>)`, 'small'), ...rows] });
+  const m = modal({ title: isC ? 'Pièces' : 'Pattes', color: 'yellow', body: [p(`Échange tes gemmes (tu en as ${fmt(S.rubies)}<i class="ico ruby"></i>)`, 'small'), ...rows] });
 }
 
 // ---------- branchement des boutons du menu ----------
@@ -125,10 +128,18 @@ export function wire() {
 
 // Première visite : on demande un pseudo, puis on explique le jeu. Ensuite : le cadeau du jour s'il attend.
 export async function firstVisit() {
-  if (new URLSearchParams(location.search).has('test')) { if (!S.name) { S.name = 'Testeur'; changed(); } return; }
-  if (!S.name) {
+  if (new URLSearchParams(location.search).has('test')) { if (!S.name) { S.name = 'Testeur'; changed(); } if (!S.welcome) welcomeChest(); return; }
+  const fresh = !S.name;
+  if (fresh) {
     const v = await prompt('Bienvenue !', 'Choisis ton pseudo de dresseur', '', 14, 'C\'est parti !');
     S.name = v || 'Dresseur'; S.seenIntro = true; changed(); Net.pushProfile();
-    howTo();
+  }
+  if (!S.welcome) {      // nouveaux joueurs et joueurs de la version 1 : une cage pour découvrir les nouveaux animaux
+    await new Promise((res) => modal({ title: fresh ? 'Cadeau !' : 'Mise à jour !', color: 'yellow', closable: false, body: [h('img', { class: 'wel-cage pulse', src: 'assets/chests/icon_sauvage.webp', alt: '' }),
+      p(fresh ? 'Voici une cage pour bien commencer : de nouveaux animaux t\'attendent dedans !' : 'Beast Brawl passe aux combats en temps réel, avec 10 animaux, des cartes et des cages. Voici une cage pour fêter ça !')],
+    buttons: [{ label: 'Ouvrir !', color: 'green' }], onClose: res }));
+    await openChestAnim(welcomeChest());
+    render();
+    if (fresh) howTo();
   } else if (dailyReady()) dailyPopup();
 }

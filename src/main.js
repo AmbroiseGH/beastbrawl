@@ -2,22 +2,25 @@
 import { $, wait, DEBUG, TEST, pick } from './core/utils.js';
 import { load, S, changed } from './core/save.js';
 import { loadAll } from './core/assets.js';
-import { unlock, playFile, sfx } from './core/audio.js';
+import { unlock, playFile, loadSfx } from './core/audio.js';
 import { fit } from './ui/stage.js';
 import { showMenu, prepare } from './ui/menu.js';
 import './ui/pages.js';
+import './ui/collection.js';
 import './ui/social.js';
 import { wire, firstVisit } from './ui/popups.js';
 import { readInbox } from './ui/social.js';
 import { Net } from './online/net.js';
 
 const TIPS = [
-  'Astuce : place tes Bulldogs devant, ils attirent les coups.',
-  'Astuce : le Singe fouette tous les ennemis autour de lui. Entoure-le d\'ennemis !',
-  'Astuce : gagne avec presque toute ton équipe debout pour décrocher 3 étoiles.',
-  'Astuce : chaque animal mis K.-O. te rapporte des pattes pour améliorer ton équipe.',
-  'Astuce : une série de victoires augmente tes gains de pièces.',
-  'Astuce : la Roulade du Bulldog étourdit sa cible et blesse autour d\'elle.',
+  'Astuce : pose un Bulldog devant tes animaux fragiles, il attire les coups.',
+  'Astuce : le Cochon ne s\'intéresse qu\'aux structures. Protège-le et il cassera tout !',
+  'Astuce : siffle pour rappeler tes animaux quand l\'adversaire attaque ton camp.',
+  'Astuce : pendant la dernière minute, l\'Aura se recharge deux fois plus vite.',
+  'Astuce : l\'Aigle vole. Seuls le Chaton, l\'Orang-outan, l\'Aigle et les tours peuvent le toucher.',
+  'Astuce : même une Cage Rustique peut cacher un animal ultime !',
+  'Astuce : le Chaton soigne ses alliés un coup sur trois.',
+  'Astuce : touche Attaquer puis une tour pour que tous tes animaux foncent dessus.',
 ];
 
 load();
@@ -62,8 +65,10 @@ async function boot() {
   const loading = loadAll((k) => { prog = k; $('ldFill').style.width = Math.round(k * 100) + '%'; $('ldText').textContent = 'Chargement… ' + Math.round(k * 100) + ' %'; });
   const t0 = performance.now();
   const online = Net.init().catch(() => false);             // jeu en ligne : on se signale au serveur pendant le chargement
+  const sounds = loadSfx();                                  // bruitages décodés une fois pour toutes
   await splash();
   await loading;
+  await Promise.race([sounds, wait(TEST ? 0 : 2500)]);
   await prepare();                                           // décor des menus prêt à dessiner
   if (!TEST) await wait(Math.max(0, 1400 - (performance.now() - t0)));   // le temps de voir l'écran de chargement
   $('ldText').textContent = 'Prêt !';

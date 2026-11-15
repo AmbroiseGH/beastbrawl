@@ -1,12 +1,13 @@
 // Jeu en ligne : profil, amis, clans, discussion de clan, classement, adversaires réels et messages.
 // Tout passe par l'interface REST de Firebase Realtime Database (aucune bibliothèque à charger).
-// Les combats contre d'autres joueurs sont « différés » : on affronte l'équipe enregistrée de l'adversaire,
-// le combat est simulé sur l'appareil, puis l'adversaire reçoit le résultat dans ses messages.
+// Les combats contre d'autres joueurs sont « différés » : on affronte le deck enregistré de l'adversaire, joué par
+// l'ordinateur sur l'appareil, puis l'adversaire reçoit le résultat dans ses messages.
 import { ONLINE } from './config.js';
 import { S, changed } from '../core/save.js';
 import { uid as newId } from '../core/utils.js';
-import { ANIMALS } from '../data/animals.js';
-import { validTeam } from '../data/bots.js';
+import { ANIMALS, MAX_LEVEL } from '../data/animals.js';
+import { validDeck } from '../data/bots.js';
+import { DECK_SIZE } from '../data/cards.js';
 
 const LS = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const cfg = { url: (new URLSearchParams(location.search).get('db') || LS('beastbrawl.db') || ONLINE.databaseURL || '').replace(/\/+$/, ''), key: ONLINE.apiKey || '' };
@@ -42,14 +43,17 @@ async function req(method, path, body, query = {}) {
 const get = (p, q) => req('GET', p, undefined, q), put = (p, b) => req('PUT', p, b), patch = (p, b) => req('PATCH', p, b), post = (p, b) => req('POST', p, b), del = (p) => req('DELETE', p);
 const clean = (s, n) => String(s || '').replace(/[<>]/g, '').trim().slice(0, n);
 const key = (name) => clean(name, 20).toLowerCase().replace(/[^a-z0-9àâçéèêëîïôûùüÿœ]/g, '_');
-const myTeam = () => S.formation.filter((u) => ANIMALS[u.id]).map((u) => ({ id: u.id, col: u.col, row: u.row, level: (S.animals[u.id] || { level: 1 }).level }));
-const me = () => ({ name: clean(S.name, 14) || 'Dresseur', avatar: S.avatar, level: S.level, trophies: S.trophies, clan: S.clan ? S.clan.id : null, clanName: S.clan ? S.clan.name : '', team: myTeam(), seen: NOW });
-// Un joueur lu sur le serveur n'est jamais cru sur parole : on vérifie son équipe avant de la faire combattre
+const myDeck = () => S.deck.filter((id) => S.cards[id]).map((id) => ({ id, level: S.cards[id].level }));
+const me = () => ({ name: clean(S.name, 14) || 'Dresseur', avatar: S.avatar, level: S.level, trophies: S.trophies, clan: S.clan ? S.clan.id : null, clanName: S.clan ? S.clan.name : '', deck: myDeck(), team: null, seen: NOW });
+// Un joueur lu sur le serveur n'est jamais cru sur parole : on vérifie son deck avant de le faire combattre.
+// Les profils de la version 1 n'ont qu'une équipe (team) : ses animaux deviennent un deck.
 function safePlayer(id, p) {
   if (!p || typeof p !== 'object') return null;
-  let team = Array.isArray(p.team) ? p.team.filter((u) => u && ANIMALS[u.id]).map((u) => ({ id: u.id, col: u.col | 0, row: u.row | 0, level: Math.max(1, Math.min(15, u.level | 0)) })) : [];
-  if (!validTeam(team, (a) => ANIMALS[a].slots)) team = [];
-  return { uid: id, name: clean(p.name, 14) || 'Dresseur', avatar: /^[a-z0-9]+$/.test(p.avatar || '') ? p.avatar : 'tiger', level: p.level | 0 || 1, trophies: Math.max(0, p.trophies | 0), clan: p.clan || null, clanName: clean(p.clanName, 20), units: team, seen: +p.seen || 0, online: Date.now() - (+p.seen || 0) < 150000 };
+  const src = Array.isArray(p.deck) ? p.deck : Array.isArray(p.team) ? p.team : [];
+  const seen = new Set();
+  let deck = src.filter((u) => u && ANIMALS[u.id] && !seen.has(u.id) && seen.add(u.id)).slice(0, DECK_SIZE).map((u) => ({ id: u.id, level: Math.max(1, Math.min(MAX_LEVEL, u.level | 0)) }));
+  if (!validDeck(deck)) deck = [];
+  return { uid: id, name: clean(p.name, 14) || 'Dresseur', avatar: /^[a-z0-9]+$/.test(p.avatar || '') ? p.avatar : 'tiger', level: p.level | 0 || 1, trophies: Math.max(0, p.trophies | 0), clan: p.clan || null, clanName: clean(p.clanName, 20), deck, seen: +p.seen || 0, online: Date.now() - (+p.seen || 0) < 150000 };
 }
 
 export const Net = {
@@ -81,7 +85,7 @@ export const Net = {
   // Un adversaire réel proche en trophées (ou null s'il n'y en a pas)
   async findOpponent(trophies) {
     const d = await get('players', { orderBy: '"trophies"', startAt: Math.max(0, trophies - 250), endAt: trophies + 250, limitToFirst: 40 });
-    const list = Object.keys(d || {}).filter((k) => k !== S.uid).map((k) => safePlayer(k, d[k])).filter((p) => p && p.units.length);
+    const list = Object.keys(d || {}).filter((k) => k !== S.uid).map((k) => safePlayer(k, d[k])).filter((p) => p && p.deck.length);
     return list.length ? list[Math.floor(Math.random() * list.length)] : null;
   },
   // Prévient l'adversaire du résultat (il le lira dans ses messages)
