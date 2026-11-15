@@ -111,4 +111,5 @@ export function musicVolume() { if (cur) cur.el.volume = musicVol(); }
 // Coupe la musique quand le jeu passe en arrière-plan, la relance au retour
 document.addEventListener('visibilitychange', () => { if (!cur) return; if (document.hidden) cur.el.pause(); else if (wanted) cur.el.play().catch(() => {}); });
 
-export function playFile(src, v = 0.9) { if (!S.settings.sfx) return null; const a = new Audio(src); a.volume = Math.min(1, v * S.settings.volume / 0.7); a.play().catch(() => {}); return a; }
+// Joue un fichier son à part. a.ok : promesse vraie si la lecture a démarré, fausse si le navigateur l'a bloquée
+export function playFile(src, v = 0.9) { if (!S.settings.sfx) return null; const a = new Audio(src); a.volume = Math.min(1, v * S.settings.volume / 0.7); a.ok = a.play().then(() => true, () => false); return a; }

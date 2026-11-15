@@ -1,4 +1,4 @@
-// Beast Brawl! — démarrage : écran du studio Michigan, chargement, puis le menu.
+// Beast Brawl! — démarrage : chargement avec le jingle, puis le menu.
 import { $, wait, DEBUG, TEST, pick } from './core/utils.js';
 import { load, S, changed } from './core/save.js';
 import { loadAll } from './core/assets.js';
@@ -8,6 +8,7 @@ import { showMenu, prepare } from './ui/menu.js';
 import './ui/pages.js';
 import './ui/collection.js';
 import './ui/social.js';
+import './ui/cheat.js';
 import { wire, firstVisit } from './ui/popups.js';
 import { readInbox } from './ui/social.js';
 import { Net } from './online/net.js';
@@ -28,35 +29,20 @@ if (DEBUG) document.body.classList.add('debug');
 fit();
 $('ldTip').textContent = pick(TIPS);
 
-// l'écran du studio : logo qui brille + jingle, puis le chargement apparaît
-function splash() {
-  const el = $('splash');
-  if (!el) return Promise.resolve();
-  if (TEST) { el.remove(); return Promise.resolve(); }
-  const soundOk = () => {
-    try {
-      if (navigator.getAutoplayPolicy) return navigator.getAutoplayPolicy('mediaelement') === 'allowed';
-      const C = window.AudioContext || window.webkitAudioContext; if (!C) return false;
-      const c = new C(), ok = c.state === 'running'; c.close(); return ok;
-    } catch (e) { return false; }
-  };
+// Jingle du lancement (créé avec Soundza). Si le navigateur bloque le son, on attend un toucher à la fin du chargement.
+const INTRO = 'assets/audio/intro.mp3', INTRO_MS = 3300;      // la musique du menu arrive à la fin du jingle
+function tapToPlay() {
+  const scr = $('scrLoading'), txt = $('ldText');
+  txt.textContent = 'Touche l\'écran pour jouer'; txt.classList.add('tap'); scr.classList.add('tap');
   return new Promise((resolve) => {
-    const play = async () => {
-      el.onpointerdown = null; removeEventListener('keydown', onKey);
-      $('spHint').hidden = true;
-      el.classList.add('sp-on');
-      playFile('assets/audio/eagle.mp3', 0.9);
-      await wait(2150);
-      el.classList.add('sp-out');
-      playFile('assets/audio/jingle.mp3', 0.75);
-      await wait(500);
-      el.remove(); resolve();
+    const go = (e) => {
+      if (e.type === 'keydown' && !['Enter', ' ', 'Escape'].includes(e.key)) return;
+      if (e.type === 'keydown') e.preventDefault();
+      scr.removeEventListener('pointerdown', go); removeEventListener('keydown', go);
+      txt.classList.remove('tap'); scr.classList.remove('tap');
+      unlock(); resolve();
     };
-    const onTouch = () => { unlock(); play(); };
-    const onKey = (e) => { if (['Enter', ' ', 'Escape'].includes(e.key)) { e.preventDefault(); onTouch(); } };
-    if (!S.settings.sfx || soundOk()) { play(); return; }
-    $('spHint').hidden = false;       // le navigateur bloque le son : on attend un premier toucher
-    el.onpointerdown = onTouch; addEventListener('keydown', onKey);
+    scr.addEventListener('pointerdown', go); addEventListener('keydown', go);
   });
 }
 
@@ -64,17 +50,25 @@ async function boot() {
   let prog = 0;
   const loading = loadAll((k) => { prog = k; $('ldFill').style.width = Math.round(k * 100) + '%'; $('ldText').textContent = 'Chargement… ' + Math.round(k * 100) + ' %'; });
   const t0 = performance.now();
+  let intro = TEST ? null : playFile(INTRO, 0.85), introAt = t0;
   const online = Net.init().catch(() => false);             // jeu en ligne : on se signale au serveur pendant le chargement
   const sounds = loadSfx();                                  // bruitages décodés une fois pour toutes
-  await splash();
   await loading;
   await Promise.race([sounds, wait(TEST ? 0 : 2500)]);
   await prepare();                                           // décor des menus prêt à dessiner
   if (!TEST) await wait(Math.max(0, 1400 - (performance.now() - t0)));   // le temps de voir l'écran de chargement
-  $('ldText').textContent = 'Prêt !';
-  if (!TEST) await wait(350);
+  if (intro && !(await Promise.race([intro.ok, wait(2000)]))) {
+    intro.pause();                                           // son bloqué : un toucher lance le jingle
+    await tapToPlay();
+    intro = playFile(INTRO, 0.85); introAt = performance.now();
+    $('ldText').textContent = 'Prêt !';
+    await wait(900);
+  } else {
+    $('ldText').textContent = 'Prêt !';
+    if (!TEST) await wait(350);
+  }
   wire();
-  showMenu('main');
+  showMenu('main', intro ? Math.max(0, INTRO_MS - (performance.now() - introAt)) : 0);
   await firstVisit();
   if (await online) readInbox().catch(() => {});      // messages reçus : attaques subies, invitations, nouveaux amis
 }

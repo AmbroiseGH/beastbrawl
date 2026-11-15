@@ -148,7 +148,7 @@
 .upg-stats{display:flex;flex-direction:column;gap:12px;animation:panelIn .4s ease-out .85s both}
 .up-row{display:flex;align-items:center;gap:16px;font-size:34px}
 .up-row span{color:var(--cream)}.up-row i::before{content:'➜';font-style:normal}.up-row b{font-weight:400;color:var(--good)}
-.upg-tap{position:absolute;left:0;right:0;bottom:130px;text-align:center;font-size:30px;color:var(--cream);animation:spHint 1s ease-in-out .9s infinite alternate both}
+.upg-tap{position:absolute;left:0;right:0;bottom:130px;text-align:center;font-size:30px;color:var(--cream);animation:hintBlink 1s ease-in-out .9s infinite alternate both}
 
 /* ---------- ouverture d'une cage ---------- */
 .chest-ov{position:absolute;inset:0;z-index:65;background:#070818;pointer-events:auto;animation:veilIn .2s ease-out}

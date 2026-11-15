@@ -213,10 +213,14 @@ export function go(t, silent) {
   setTab(t); kick();
 }
 
-export function showMenu(t = 'main') {
+// musicDelay (ms) : laisse finir le jingle du lancement avant la musique du menu
+let musicTimer = 0;
+export function showMenu(t = 'main', musicDelay = 0) {
   $('scrLoading').hidden = true; $('scrBattle').hidden = true; $('scrMenu').hidden = false;
   go(t, true);
-  music('menu');
+  clearTimeout(musicTimer);
+  if (musicDelay > 0) musicTimer = setTimeout(() => { if (!$('scrMenu').hidden) music('menu'); }, musicDelay);
+  else music('menu');
 }
 
 // ---------- changer de page au doigt ----------
