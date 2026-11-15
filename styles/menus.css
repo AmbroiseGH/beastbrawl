@@ -151,6 +151,7 @@
 .upg-tap{position:absolute;left:0;right:0;bottom:130px;text-align:center;font-size:30px;color:var(--cream);animation:hintBlink 1s ease-in-out .9s infinite alternate both}
 
 /* ---------- ouverture d'une cage ---------- */
+.mn-fx{position:absolute;left:0;top:0;width:941px;height:1672px;pointer-events:none}
 .chest-ov{position:absolute;inset:0;z-index:65;background:#070818;pointer-events:auto;animation:veilIn .2s ease-out}
 .chest-ov.out{opacity:0;transition:opacity .25s}
 .ch-cv{position:absolute;left:0;top:0;width:941px;height:1672px;display:block}

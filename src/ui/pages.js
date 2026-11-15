@@ -11,6 +11,7 @@ import { owned, levelOf, cardsOf, questsReady, dailyReady, anyUpgrade, chestLeft
 import { register, render } from './menu.js';
 import { modal, p, toast } from './ui.js';
 import { openChestAnim } from './chest.js';
+import { ambient } from './ambient.js';
 
 export const hit = (x, y, w, hgt, onclick, label) => h('button', { class: 'hit', 'aria-label': label, style: { left: x + 'px', top: y + 'px', width: w + 'px', height: hgt + 'px' }, onclick: () => { sfx.click(); onclick(); } });
 export const ctr = (x, y, cls, text) => h('div', { class: 'ctr t ' + cls, style: { left: x + 'px', top: y + 'px' } }, text);
@@ -35,6 +36,7 @@ const SLOT_X = [55, 268, 480, 693], SLOT_Y = 1238, SLOT_W = 194, SLOT_H = 202;
 register('main', (pg) => {
   const arena = arenaOf(S.trophies), [lo, hi] = arenaRange(arena);
   pg.append(
+    ambient(),
     h('div', { class: 'mn-name t' }, S.name || 'Dresseur'),
     h('div', { class: 'mn-clan t sm' }, h('i'), S.clan ? S.clan.name : 'Sans clan'),
     ctr(700, 142, 'mn-tro', fmt(S.trophies)),

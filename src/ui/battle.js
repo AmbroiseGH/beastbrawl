@@ -158,59 +158,57 @@ function onEvents(evs) {
   const b = B.b;
   for (const e of evs) {
     switch (e.type) {
-      case 'deploy':
+      case 'deploy':       // l'animal tombe du ciel : le bruit de l'atterrissage suit de peu (la poussière est dessinée par la vue)
         play('deploy', { v: e.side === 0 ? 0.8 : 0.45, pan: pan(e.x) });
-        if (e.side === 0) V.fx('ring_blue', e.x, e.y + 4, { s0: 0.2, s1: 0.6, life: 0.5, flat: 0.55, a: 0.9 });
+        if (BIG[e.id]) play('chest_thud', { v: 0.55, pan: pan(e.x), at: 0.2 });
+        V.fx(e.side === 0 ? 'ring_blue' : 'ring_red', e.x, e.y + 4, { s0: 0.2, s1: 0.62, life: 0.45, flat: 0.55, a: 0.9 });
         break;
-      case 'arrive': {
-        const big = BIG[e.id];
-        V.fx('dust_ring', e.x, e.y + 6, { s0: 0.3, s1: big ? 1.3 : 0.85, life: 0.45, flat: 0.6, a: 0.85 });
-        V.shake = Math.max(V.shake, big ? 9 : 3);
-        if (big) { V.decal('crater1', e.x, e.y + 8, 4, 0.5); play('chest_thud', { v: 0.6, pan: pan(e.x) }); }
-        voice(e.id, 0.5);
-        break;
-      }
+      case 'arrive': voice(e.id, 0.5); break;
       case 'attack':
         if (e.special) { play(SPECIAL_SFX[e.id] || 'whoosh', { v: 0.8, pan: pan(e.x) }); voice(e.id, 0.6); }
         else play('swish', { v: e.id === 'kitten' ? 0.35 : 0.45, rate: e.id === 'kitten' ? 1.5 : rand(0.85, 1.15), pan: pan(e.x) });
         if (e.charge) { play('hit_heavy2', { v: 0.9 }); V.shake = Math.max(V.shake, 10); }
         break;
       case 'hit': {
-        const ent = b.ents.get(e.id), y = e.y - (e.air ? AIR_LIFT : 0) - (e.kind === 'tower' ? 90 : 34);
+        const ent = b.ents.get(e.id), y = e.y - (e.air ? AIR_LIFT : 0) - (e.kind === 'tower' ? 90 : ent && ent.r ? 14 + ent.r * 0.55 : 28);
         if (e.kind === 'tower') { play('tower_hit', { v: 0.6, pan: pan(e.x) }); if (!e.splash && e.by) V.fx(SPARK[e.by] || 'burst_yellow', e.x + rand(-30, 30), y + rand(-20, 30), { s0: 0.25, s1: 0.55, life: 0.25, rot: rand(-0.5, 0.5) }); break; }
         if (e.splash) break;
         if (!e.by) { V.fx('smoke_puff', e.x + rand(-8, 8), y, { s0: 0.12, s1: 0.3, life: 0.3, a: 0.8 }); play('hit', { v: 0.3, rate: 1.3, pan: pan(e.x) }); break; }
         const heavy = BIG[e.by] || e.charge;
-        V.fx(SPARK[e.by] || 'burst_yellow', e.x + rand(-10, 10), y, { s0: 0.25, s1: heavy ? 0.75 : 0.5, life: 0.24, rot: rand(-0.6, 0.6) });
+        V.fx(SPARK[e.by] || 'burst_yellow', e.x + rand(-8, 8), y, { s0: 0.18, s1: heavy ? 0.6 : 0.4, life: 0.24, rot: rand(-0.6, 0.6) });
+        V.fx('star_big', e.x + rand(-6, 6), y, { s0: 0.1, s1: heavy ? 0.5 : 0.32, life: 0.16, add: true, a: 0.9, rot: rand(0, 3) });
         if (heavy) { play(['hit_heavy', 'hit_heavy2', 'hit_heavy3'][Math.floor(Math.random() * 3)], { v: 0.75, pan: pan(e.x) }); V.shake = Math.max(V.shake, 6); }
         else if (e.by === 'bulldog' || e.by === 'alligator') play('bite', { v: 0.6, pan: pan(e.x) });
         else play(['hit', 'hit2', 'hit3', 'hit4'][Math.floor(Math.random() * 4)], { v: 0.7, pan: pan(e.x) });
-        if (ent && ent.kind === 'unit' && ent.side === 0 && e.amount > ent.maxHp * 0.25) V.text('-' + e.amount, e.x, y - 30, { size: 24, tint: 'red', life: 0.7 });
+        if (ent && ent.kind === 'unit' && ent.side === 0 && e.amount > ent.maxHp * 0.25) V.text('-' + e.amount, e.x, y - 26, { size: 22, tint: 'red', life: 0.7 });
         break;
       }
-      case 'shot': if (Math.random() < 0.6) play('arrow', { v: 0.6, pan: pan(e.x) }); break;
+      case 'shot': if (Math.random() < 0.6) play('arrow', { v: 0.6, pan: pan(e.x) }); V.fx(e.role === 'main' ? 'burst_yellow' : 'star_big', e.x, e.y, { s0: 0.1, s1: e.role === 'main' ? 0.34 : 0.3, life: 0.16, add: true, top: true }); if (e.role === 'main') V.fx('smoke_puff', e.x, e.y - 6, { s0: 0.1, s1: 0.3, life: 0.5, vy: -40, a: 0.6, top: true }); break;
       case 'proj': if (e.key === 'rocks2') play('whoosh', { v: 0.45, rate: 0.8 }); break;
       case 'land':
-        if (e.key === 'rocks2') { play('rock', { v: 0.8, pan: pan(e.x) }); V.fx('burst_rocks', e.x, e.y - 16, { s0: 0.3, s1: 0.75, life: 0.3 }); V.burst('rocks', e.x, e.y - 10, 4, { s: 0.14, sp0: 120, sp1: 260, up: 160, g: 900 }); V.decal('crater1', e.x, e.y + 6, 4, 0.4); V.shake = Math.max(V.shake, 4); }
-        else if (e.key === 'hearts') V.fx('pink_burst', e.x, e.y - 30, { s0: 0.15, s1: 0.4, life: 0.25 });
+        if (e.key === 'rocks2') { play('rock', { v: 0.8, pan: pan(e.x) }); V.fx('burst_rocks', e.x, e.y - 14, { s0: 0.25, s1: 0.62, life: 0.3 }); V.burst('rocks', e.x, e.y - 10, 4, { s: 0.12, sp0: 120, sp1: 260, up: 160, g: 900 }); V.decal('crater1', e.x, e.y + 6, 4, 0.32); V.shake = Math.max(V.shake, 4); }
+        else if (e.key === 'hearts') V.fx('pink_burst', e.x, e.y - 26, { s0: 0.12, s1: 0.34, life: 0.25 });
         break;
       case 'splash':
         if (e.water) { V.fx('ice_burst', e.x, e.y - 20, { s0: 0.3, s1: 1.1, life: 0.5, a: 0.9 }); V.fx('ring_blue', e.x, e.y + 4, { s0: 0.4, s1: 2.0, life: 0.5, flat: 0.55 }); V.burst('crystals', e.x, e.y - 20, 6, { s: 0.12, sp0: 150, sp1: 360, up: 200, g: 900 }); V.shake = Math.max(V.shake, 14); }
         else if (e.gust) { V.fx('tornado', e.x, e.y - 40, { s0: 0.3, s1: 0.85, life: 0.6, a: 0.9 }); V.fx('wind_leaves', e.x, e.y - 30, { s0: 0.3, s1: 0.9, life: 0.5 }); }
         else { V.fx('dust_ring', e.x, e.y + 6, { s0: 0.4, s1: e.r / 100, life: 0.45, flat: 0.6, a: 0.9 }); if (e.special) { V.decal('crater2', e.x, e.y + 8, 5, 0.6); V.burst('rocks', e.x, e.y - 10, 6, { s: 0.16, sp0: 160, sp1: 360, up: 220, g: 900 }); V.shake = Math.max(V.shake, 12); } }
         break;
-      case 'heal': V.burst('heal_plus', e.x, e.y - 50, 2, { s: 0.12, sp0: 40, sp1: 100, up: 140, g: 0, life: 1.2 }); if (b.ents.get(e.uid) && b.ents.get(e.uid).side === 0) V.text('+' + e.amount, e.x + 30, e.y - 80, { size: 22, tint: 'green', life: 0.8 }); break;
+      case 'heal': V.burst('heal_plus', e.x, e.y - 40, 2, { s: 0.1, sp0: 40, sp1: 100, up: 140, g: 0, life: 1.2 }); if (b.ents.get(e.uid) && b.ents.get(e.uid).side === 0) V.text('+' + e.amount, e.x + 26, e.y - 66, { size: 20, tint: 'green', life: 0.8 }); break;
       case 'healwave': V.fx('ring_green', e.x, e.y + 4, { s0: 0.3, s1: e.r / 90, life: 0.6, flat: 0.55, a: 0.9 }); break;
-      case 'roar': V.fx('ring_red', e.x, e.y + 4, { s0: 0.3, s1: e.r / 85, life: 0.6, flat: 0.55, a: 0.95 }); V.text('RAGE !', e.x, e.y - 170, { size: 34, tint: 'red', life: 1, pop: 1.4 }); V.shake = Math.max(V.shake, 10); break;
-      case 'armor': V.fx('shield', e.x, e.y - 90, { s0: 0.2, s1: 0.45, life: 0.8, vy: -20 }); break;
+      case 'roar': V.fx('ring_red', e.x, e.y + 4, { s0: 0.3, s1: e.r / 85, life: 0.6, flat: 0.55, a: 0.95 }); V.text('RAGE !', e.x, e.y - 140, { size: 32, tint: 'red', life: 1, pop: 1.4 }); V.shake = Math.max(V.shake, 10); break;
+      case 'armor': V.fx('shield', e.x, e.y - 76, { s0: 0.18, s1: 0.38, life: 0.8, vy: -20 }); break;
       case 'cloud': V.fx('skull_green', e.x, e.y - 30, { s0: 0.2, s1: 0.5, life: 0.8, vy: -30 }); break;
-      case 'charge': voice('rhino', 0.6); V.text('CHARGE !', e.x, e.y - 160, { size: 26, tint: 'orange', life: 0.8 }); break;
+      case 'charge': voice('rhino', 0.6); V.text('CHARGE !', e.x, e.y - 128, { size: 26, tint: 'orange', life: 0.8 }); break;
       case 'death': {
         play('ko', { v: 0.7, pan: pan(e.x) });
         const y = e.y - (e.air ? AIR_LIFT : 0);
-        V.fx('ko_cloud', e.x, y - 50, { s0: 0.3, s1: 0.8, life: 0.7, fade: 0.3 }); V.fx('smoke_puff', e.x - 24, y - 24, { s0: 0.3, s1: 0.7, life: 0.55, vy: -70, delay: 0.08 });
+        const big = BIG[e.id] ? 1.25 : 1;
+        V.fx('ko_cloud', e.x, y - 40 * big, { s0: 0.22, s1: 0.56 * big, life: 0.7, fade: 0.3 });
+        for (let i = 0; i < 5; i++) { const an = rand(0, 6.283); V.fx('smoke_puff', e.x + Math.cos(an) * 14, y - 22 + Math.sin(an) * 10, { vx: Math.cos(an) * rand(50, 120), vy: Math.sin(an) * rand(30, 70) - 40, s0: 0.14, s1: 0.4 * big, life: rand(0.4, 0.65), a: 0.7, fade: 0.6, delay: 0.04 }); }
+        V.burst('star_big', e.x, y - 30, 5, { s: 0.16, sp0: 120, sp1: 300, up: 120, g: 500, add: true });
         if (e.air) V.burst('feather' + (1 + Math.floor(Math.random() * 3)), e.x, y - 40, 4, { s: 0.16, sp0: 40, sp1: 140, up: 60, g: 120, life: 1.6 });
-        if (e.side === 1) V.fx('paw_burst', e.x, y - 90, { s0: 0.2, s1: 0.45, life: 0.8, vy: -120, fade: 0.3 });
+        if (e.side === 1) V.fx('paw_burst', e.x, y - 70, { s0: 0.16, s1: 0.36, life: 0.8, vy: -110, fade: 0.3 });
         break;
       }
       case 'wake': { const t = b.ents.get(e.tid); if (t) { V.fx('exclaim', t.x, t.y - 210, { s0: 0.15, s1: 0.3, life: 0.8, vy: -30 }); play('horn', { v: 0.45, rate: 1.2 }); } break; }
@@ -219,6 +217,10 @@ function onEvents(evs) {
         if (!e.chain) { play(main ? 'main_down' : 'tower_down'); play('crown', { at: 0.35 }); }
         V.fx('explosion2', e.x, y, { s0: 0.4, s1: main ? 1.5 : 1.1, life: 0.7 }); V.fx('explosion1', e.x + 40, y - 30, { s0: 0.3, s1: 0.9, life: 0.6, delay: 0.12 });
         V.burst('rocks', e.x, y, 10, { s: 0.2, sp0: 200, sp1: 520, up: 300, g: 1000 }); V.burst('planks', e.x, y, 5, { s: 0.2, sp0: 160, sp1: 420, up: 260, g: 1000 });
+        V.fx('dust_ring', e.x, e.y + 10, { s0: 0.5, s1: main ? 3.4 : 2.6, life: 0.7, flat: 0.5, a: 0.9 });
+        V.fx(e.side === 1 ? 'ring_yellow' : 'ring_red', e.x, e.y + 6, { s0: 0.4, s1: main ? 4.2 : 3.2, life: 0.55, flat: 0.5, a: 0.8, add: true });
+        for (let i = 0; i < 9; i++) { const an = rand(0, 6.283); V.fx('smoke_puff', e.x + Math.cos(an) * 30, y + 30 + Math.sin(an) * 20, { vx: Math.cos(an) * rand(90, 220), vy: Math.sin(an) * rand(40, 110) - 50, s0: 0.3, s1: main ? 0.95 : 0.75, life: rand(0.7, 1.2), a: 0.75, fade: 0.6, delay: 0.05, top: true }); }
+        V.burst('star_big', e.x, y, 12, { s: 0.26, sp0: 220, sp1: 620, up: 200, g: 500, add: true, top: true });
         V.fx('crown_burst', e.x, y - 60, { s0: 0.2, s1: 0.75, life: 1.4, vy: -60, delay: 0.3 });
         V.shake = main ? 30 : 22; V.flash = 0.35; V.flashColor = e.side === 0 ? '255,80,60' : '255,255,255';
         if (!e.chain) V.banner(e.side === 1 ? 'COURONNE !' : 'AÏE !', { size: 110, tint: e.side === 1 ? 'yellow' : 'red', life: 1.2, y: 720, delay: 0.25 });
@@ -298,12 +300,13 @@ function showEnd(res, out, ranked) {
   let closed = false;
   const STARS = [[235, 389, 133, 135], [364, 355, 157, 138], [514, 390, 132, 125]];    // les couronnes claquent une à une
   (async () => {
-    await wait(TEST ? 10 : 450);
-    for (let i = 0; i < res.crowns; i++) { const [x, y, w, hh] = STARS[i]; panel.append(h('img', { class: 'end-star', src: `assets/ui/end_star${i + 1}.webp`, alt: '', style: { left: x + 'px', top: y + 'px', width: w + 'px', height: hh + 'px' } })); sfx.star(i); await wait(TEST ? 5 : 330); }
+    await wait(TEST ? 10 : 450);      // (le joueur peut toucher « Continuer » avant la fin : on s'arrête dès que l'écran est fermé)
+    for (let i = 0; i < res.crowns && !closed; i++) { const [x, y, w, hh] = STARS[i]; panel.append(h('img', { class: 'end-star', src: `assets/ui/end_star${i + 1}.webp`, alt: '', style: { left: x + 'px', top: y + 'px', width: w + 'px', height: hh + 'px' } })); sfx.star(i); await wait(TEST ? 5 : 330); }
+    if (closed) return;
     sfx.reward();
     countTo($('eCoin'), 0, r.coins, 700, (n) => '+' + fmt(n)); countTo($('eXp'), 0, r.xp, 700, (n) => '+' + fmt(n)); countTo($('eRuby'), 0, r.rubies, 500, (n) => '+' + fmt(n));
-    if (chestEl) { await wait(TEST ? 5 : 500); chestEl.classList.add('in'); play('chest_land'); }
-    $('eBtn').classList.add('pulse');
+    if (chestEl) { await wait(TEST ? 5 : 500); if (closed) return; chestEl.classList.add('in'); play('chest_land'); }
+    if (!closed && $('eBtn')) $('eBtn').classList.add('pulse');
   })();
   async function next() {
     if (closed) return; closed = true; sfx.click(); el.remove();

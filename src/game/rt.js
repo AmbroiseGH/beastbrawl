@@ -117,7 +117,7 @@ export function order(b, side, kind, x, y) {
 // L'ennemi (animal ou tour) sous le doigt
 export function entityAt(b, side, x, y) {
   let best = null, bd = Infinity;
-  for (const u of b.units) if (u.side === side && !u.dead) { const d = Math.hypot(u.x - x, (u.y - (u.air ? 70 : 30)) - y) - u.r - 30; if (d < 0 && d < bd) { bd = d; best = u; } }
+  for (const u of b.units) if (u.side === side && !u.dead) { const d = Math.hypot(u.x - x, (u.y - (u.air ? 80 : 26)) - y) - u.r - 30; if (d < 0 && d < bd) { bd = d; best = u; } }
   if (best) return best;
   for (const t of b.towers) if (t.side === side && !t.dead && Math.hypot(t.x - x, t.y - 40 - y) < t.r + 50) return t;
   return null;

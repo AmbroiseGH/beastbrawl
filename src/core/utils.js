@@ -38,6 +38,7 @@ export const uid = (n = 10) => { const c = 'abcdefghjkmnpqrstuvwxyz23456789'; le
 
 // Compte de a à b dans un élément (récompenses qui défilent)
 export function countTo(el, from, to, ms = 700, f = fmt) {
+  if (!el) return Promise.resolve();
   const t0 = performance.now();
   return new Promise((res) => {
     const tick = (t) => {

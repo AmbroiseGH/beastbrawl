@@ -18,7 +18,7 @@ const UI_PRELOAD = ['btn_yellow', 'btn_green', 'btn_blue', 'btn_purple', 'btn_re
   'ic_close', 'ic_ok', 'ic_info', 'ic_settings', 'ic_play', 'ic_back', 'ic_crown', 'ic_shield_red', 'ic_shield_blue', 'ic_target',
   'av_tiger', 'av_gorilla', 'av_eagle', 'av_tiger2', 'av_bulldog', 'av_monkey', 'av_croc', 'av_orang', 'order_whistle', 'order_attack',
   ...['shop', 'collection', 'main', 'clan', 'ranked'].flatMap((t) => ['navcap_' + t, 'navring_' + t, 'navfill_' + t])];
-const BOOT_JSONS = { fx: 'fx/fx.json', font: 'fonts/bitmap.json', arena: 'arena/arena.json', chestMeta: 'chests/meta.json', revealMeta: 'cards/reveal_meta.json' };
+const BOOT_JSONS = { fx: 'fx/fx.json', font: 'fonts/bitmap.json', arena: 'arena/arena.json', chestMeta: 'chests/meta.json?v=3', revealMeta: 'cards/reveal_meta.json?v=3' };
 
 const pending = {};
 function loadImage(src) {
@@ -40,15 +40,17 @@ export function json(key, path) {
 }
 // Ce qu'il faut pour dessiner un animal en combat (hd : la grande planche de l'aperçu de la collection)
 // (?v=2 : les planches du Singe et du Bulldog ont changé de forme, l'ancienne copie gardée hors ligne ne doit pas servir)
-export const unitAssets = (id, hd) => { const k = hd ? id + '_hd' : id; return Promise.all([image(k, 'units/' + k + '.webp?v=2'), json(k, 'units/' + k + '.json?v=2')]); };
+export const unitAssets = (id, hd) => { const k = hd ? id + '_hd' : id; return Promise.all([image(k, 'units/' + k + '.webp?v=3'), json(k, 'units/' + k + '.json?v=3')]); };
 // Le décor d'une arène : terrain, six structures et leurs ruines, barre du bas
 export function arenaAssets(n) {
-  const jobs = [image('field' + n, 'arena/field' + n + '.webp'), image('hud', 'arena/hud.webp'), image('shield', 'arena/shield.webp'), image('crownRed', 'arena/crown_red.webp'), image('crownBlue', 'arena/crown_blue.webp')];
+  const jobs = [image('field' + n, 'arena/field' + n + '.webp?v=3'), image('hud', 'arena/hud.webp'), image('shield', 'arena/shield.webp'), image('crownRed', 'arena/crown_red.webp'), image('crownBlue', 'arena/crown_blue.webp')];
   for (const s of ['e_main', 'e_left', 'e_right', 'p_left', 'p_right', 'p_main']) jobs.push(image(`a${n}_${s}`, `arena/a${n}_${s}.webp`), image(`a${n}_${s}_ruin`, `arena/a${n}_${s}_ruin.webp`));
   return Promise.all(jobs);
 }
-export const chestAssets = (tier) => image('sheet_' + tier, 'chests/' + tier + '.webp');
-export const revealAssets = (r) => image('reveal_' + r, 'cards/reveal_' + r + '.webp');
+// Planches haute définition (?v=3 : leur découpage a changé, l'ancienne copie gardée hors ligne ne doit pas servir)
+export const chestAssets = (tier) => image('sheet_' + tier, 'chests/' + tier + '.webp?v=3');
+export const revealAssets = (r) => image('reveal_' + r, 'cards/reveal_' + r + '.webp?v=3');
+export const cardHd = (id) => image('cardhd_' + id, 'cards/' + id + '_hd.webp');      // grande carte, pour la révélation
 
 // onProgress(0…1). Ne rejette jamais : une image manquante n'empêche pas de jouer.
 export async function loadAll(onProgress) {
