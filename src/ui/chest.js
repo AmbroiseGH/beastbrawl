@@ -1,10 +1,10 @@
 // Ouverture d'une cage : la cage tombe sur son socle, s'impatiente, tremble puis s'ouvre dans un éclair ; chaque
-// pile de cartes s'envole de la cage, se fait attendre selon sa rareté, se retourne et se révèle.
+// pile de cartes s'envole de la cage, se fait attendre selon sa rareté, pivote en vraie 3D et se révèle.
 // Tout est dessiné sur un canvas plein écran (décor, rayons et lueurs calculés, pas d'images de fond) ;
 // un toucher fait avancer la scène.
 import { $, h, clamp, rand, wait, TEST } from '../core/utils.js';
 import { play, sfx } from '../core/audio.js';
-import { IMG, DATA, chestAssets, revealAssets, cardHd } from '../core/assets.js';
+import { IMG, DATA, chestAssets, backAssets, cardHd } from '../core/assets.js';
 import { ANIMALS } from '../data/animals.js';
 import { CHESTS, RARITY, upgradeCost } from '../data/cards.js';
 import { view as stageView } from './stage.js';
@@ -15,7 +15,12 @@ const BIG = { x: CX, y: 1180, s: 1 };        // la cage au centre (y : là où e
 const SMALL = { x: CX, y: 1556, s: 0.5 };     // la cage rangée en bas pendant les cartes
 const CHW = 600;                             // largeur d'une image de cage en grand
 const CARD_Y = 650, CARD_W = 468;            // la carte révélée
+const CARD_R = 1.375, PERSP = 4, THICK = 0.036; // carte : hauteur / largeur ; distance de l'œil et épaisseur, en largeurs de carte
 const SUSPENSE = { common: 0, rare: 0.3, epic: 0.7, legendary: 1.15, ultimate: 1.6 };
+const SPIN = { common: [1, 0.5], rare: [3, 0.66], epic: [3, 0.74], legendary: [5, 0.92], ultimate: [7, 1.12] };    // pivot : demi-tours, durée
+const GOLD = ['#fff6c0', '#f2b63a', '#8a5208'], EDGE = { common: ['#f4f8ff', '#9db3d2', '#3c5278'], rare: GOLD, epic: GOLD, legendary: GOLD, ultimate: GOLD };   // la tranche
+const ORBIT = { epic: 3, legendary: 5, ultimate: 7 };
+const BACK_W = { common: 1.076, rare: 1.078, epic: 1.118, legendary: 1.028, ultimate: 1.112 };   // largeur du cadre d'un dos (plus trapu qu'une face), en largeurs de face
 const PILLAR = { common: 'pillar_blue', rare: 'pillar_gold', epic: 'pillar_purple', legendary: 'pillar_gold', ultimate: 'pillar_purple' };
 const RAINBOW = ['#ff5a6a', '#ffb23f', '#ffe95a', '#6dff7a', '#5ad0ff', '#c07aff'];
 const ease = (t) => 1 - Math.pow(1 - clamp(t, 0, 1), 3);
@@ -25,7 +30,7 @@ const rgbOf = (hex) => { const n = parseInt(hex.slice(1), 16); return [n >> 16, 
 const css = (c, a = 1, m = 1, add = 0) => `rgba(${Math.min(255, c[0] * m + add) | 0},${Math.min(255, c[1] * m + add) | 0},${Math.min(255, c[2] * m + add) | 0},${a})`;
 
 // ---------- images calculées une fois (rayons, lueur, vignette) ----------
-const SPR = {}, TINTED = {};
+const SPR = {}, TINTED = {}, WHITE = new Map();
 const mk = (w, hh) => { const c = document.createElement('canvas'); c.width = w; c.height = hh; return c; };
 function glowBase() {
   if (SPR.glow) return SPR.glow;
@@ -72,7 +77,7 @@ function vignette() {
 export async function openChestAnim(loot) {
   const stacks = loot.cards.map((c) => ({ ...c, rarity: ANIMALS[c.id].rarity }));
   const rarities = [...new Set(stacks.map((c) => c.rarity))];
-  const ready = Promise.all([loot.direct ? null : chestAssets(loot.tier), ...rarities.map(revealAssets), ...stacks.map((c) => cardHd(c.id))]);   // direct : cartes achetées, sans cage
+  const ready = Promise.all([loot.direct ? null : chestAssets(loot.tier), ...rarities.map(backAssets), ...stacks.map((c) => cardHd(c.id))]);   // direct : cartes achetées, sans cage
   const cv = h('canvas', { class: 'ch-cv' });
   const skip = h('button', { class: 'ch-skip t xs', onclick: (e) => { e.stopPropagation(); S.skip = true; tap(); } }, 'Tout voir ▸▸');
   const el = h('div', { class: 'chest-ov' }, cv, skip);
@@ -84,7 +89,7 @@ export async function openChestAnim(loot) {
   const C = CHESTS[loot.tier] || CHESTS.rustique, tierN = Math.max(0, Object.keys(CHESTS).indexOf(loot.tier));
   const first = stacks[0] ? RARITY[stacks[0].rarity].color : C.color, homeCol = loot.direct ? first : C.color;
   const S = {
-    phase: 'load', t: 0, time: 0, i: -1, skip: false, done: false, parts: [], rings: [], trail: [], motes: [], shake: 0, flash: 0, flashCol: '255,255,255',
+    phase: 'load', t: 0, time: 0, i: -1, skip: false, done: false, parts: [], rings: [], bolts: [], trail: [], motes: [], shake: 0, sx: 0, flash: 0, flashCol: '255,255,255', streak: 0, side: 0, prev: null,
     bg: rgbOf(homeCol).map((v) => v * 0.4), bgT: rgbOf(homeCol),
     ray: { x: CX, y: BIG.y - 250, tx: CX, ty: BIG.y - 250, p: 0, pT: 0, col: homeCol, prev: null, fade: 1 },
     ch: { ...BIG, a: loot.direct ? 0 : 1 }, chT: BIG, sq: 0, sqv: 0, pod: 0,
@@ -100,7 +105,12 @@ export async function openChestAnim(loot) {
   const burst = (key, x, y, n, o = {}) => { for (let i = 0; i < n; i++) { const an = rand(0, 6.283), sp = rand(o.sp0 || 200, o.sp1 || 600); fx(key, x, y, { vx: Math.cos(an) * sp, vy: Math.sin(an) * sp - (o.up || 0), g: o.g ?? 900, life: rand(0.6, 1.1) * (o.life || 1), s0: (o.s || 0.3) * rand(0.7, 1.2), s1: (o.s || 0.3) * rand(0.3, 0.7), rot: rand(0, 6), vr: rand(-8, 8), delay: o.delay, add: o.add, back: o.back, col: o.col, drag: o.drag }); } };
   const lightBurst = (x, y, n, col, sp = 700, size = 46) => burst('@', x, y, n, { col, s: size, sp0: sp * 0.3, sp1: sp, g: 0, drag: 2.6, life: 0.9, add: true });
   const inward = (x, y, col, d0, d1) => { const an = rand(0, 6.283), d = rand(d0, d1), life = rand(0.32, 0.5); fx('@', x + Math.cos(an) * d, y + Math.sin(an) * d * 0.85, { vx: -Math.cos(an) * d / life, vy: -Math.sin(an) * d * 0.85 / life, life, s0: rand(26, 54), s1: 8, col, add: true }); };
-  const ring = (x, y, col, o = {}) => S.rings.push({ x, y, col, age: -(o.delay || 0), life: o.life || 0.55, r0: o.r0 || 40, r1: o.r1 || 620, w: o.w || 26, flat: o.flat || 1 });
+  const ring = (x, y, col, o = {}) => S.rings.push({ x, y, col, age: -(o.delay || 0), life: o.life || 0.55, r0: o.r0 || 40, r1: o.r1 || 620, w: o.w || 26, flat: o.flat || 1, inv: !!o.inv });   // inv : l'onde se resserre
+  const bolt = (x0, y0, x1, y1, col, life = 0.13) => {       // éclair : une ligne brisée, tirée au hasard
+    const pts = [[x0, y0]], n = 7, dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy) || 1;
+    for (let i = 1; i < n; i++) { const f = i / n, d = rand(-1, 1) * len * 0.16 * Math.sin(f * Math.PI); pts.push([x0 + dx * f - dy / len * d, y0 + dy * f + dx / len * d]); }
+    pts.push([x1, y1]); S.bolts.push({ pts, col, age: 0, life });
+  };
   const drawFx = (key, x, y, s, rot, a) => { const r = DATA.fx[key]; if (!r) return; ctx.globalAlpha = a; ctx.save(); ctx.translate(x, y); if (rot) ctx.rotate(rot); ctx.drawImage(IMG.fx, r[0], r[1], r[2], r[3], -r[2] * s / 2, -r[3] * s / 2, r[2] * s, r[3] * s); ctx.restore(); ctx.globalAlpha = 1; };
   const glow = (x, y, size, col, a, sy = 1) => { if (a <= 0.005) return; ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(1, a); ctx.drawImage(tinted(glowBase(), 'g', col), x - size / 2, y - size * sy / 2, size, size * sy); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; };
   const stepParts = (dt, backLayer) => {
@@ -121,10 +131,24 @@ export async function openChestAnim(loot) {
     for (let i = S.rings.length - 1; i >= 0; i--) {
       const r = S.rings[i]; r.age += dt; if (r.age < 0) continue; if (r.age >= r.life) { S.rings.splice(i, 1); continue; }
       const t = r.age / r.life, rad = r.r0 + (r.r1 - r.r0) * ease(t);
-      ctx.strokeStyle = r.col; ctx.globalAlpha = (1 - t) * 0.85; ctx.lineWidth = Math.max(1, r.w * (1 - t));
+      ctx.strokeStyle = r.col; ctx.globalAlpha = (r.inv ? Math.sin(t * Math.PI) : 1 - t) * 0.85; ctx.lineWidth = Math.max(1, r.inv ? r.w * (0.4 + 0.6 * t) : r.w * (1 - t));
       ctx.beginPath(); ctx.ellipse(r.x, r.y, rad, rad * r.flat, 0, 0, 6.2832); ctx.stroke();
     }
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  };
+
+  const stepBolts = (dt) => {
+    if (!S.bolts.length) return;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    for (let i = S.bolts.length - 1; i >= 0; i--) {
+      const b = S.bolts[i]; b.age += dt; if (b.age >= b.life) { S.bolts.splice(i, 1); continue; }
+      const a = 1 - b.age / b.life;
+      for (const [w, c, al] of [[18, b.col, 0.22], [8, b.col, 0.55], [3, '#ffffff', 1]]) {
+        ctx.globalAlpha = a * al; ctx.strokeStyle = c; ctx.lineWidth = w; ctx.beginPath();
+        b.pts.forEach((q, j) => (j ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.stroke();
+      }
+    }
+    ctx.restore(); ctx.globalAlpha = 1;
   };
 
   // ---------- décor ----------
@@ -211,33 +235,104 @@ export async function openChestAnim(loot) {
   }
 
   // ---------- cartes ----------
-  const backBox = (r) => { const m = DATA.revealMeta || {}, b = m.back && m.back[r], fw = m.fw || 212, fh = m.fh || 282; return { fw, fh, cols: m.cols || 8, b: b || [fw * 0.18, fh * 0.14, fw * 0.82, fh * 0.86] }; };
-  // Image f de la planche de révélation (dos de la carte qui tourne), le dos centré en (x, y) et large de w
-  const cardBack = (r, f, x, y, w, o = {}) => {
-    const img = IMG['reveal_' + r]; if (!img || !img.width) return;
-    const m = backBox(r), sc = w / (m.b[2] - m.b[0]), ox = (m.b[0] + m.b[2]) / 2, oy = (m.b[1] + m.b[3]) / 2;
-    f = Math.min(f, (m.cols === 4 ? 8 : 16) - 1);
-    ctx.save(); ctx.globalAlpha = o.a ?? 1; if (o.add) ctx.globalCompositeOperation = 'lighter';
-    ctx.translate(x, y); if (o.rot) ctx.rotate(o.rot); ctx.scale((o.sx ?? 1) * sc, sc);
-    ctx.drawImage(img, (f % m.cols) * m.fw, Math.floor(f / m.cols) * m.fh, m.fw, m.fh, -ox, -oy, m.fw, m.fh);
+  // Une carte est une image dont le cadre fait `cw` pixels de large (le dos déborde du cadre : ailes, couronne, halo).
+  const faceImg = (id) => { const hd = IMG['cardhd_' + id]; return hd && hd.width ? hd : IMG['card_' + id]; };
+  const faceTex = (id) => { const img = faceImg(id); return img && img.width ? { img, cw: img.width, bw: 1 } : null; };
+  const backTex = (r) => { const img = IMG['back_' + r]; return img && img.width ? { img, cw: img.width * 640 / 1010, bw: BACK_W[r] } : null; };
+  const whiteOf = (t) => {         // la même carte chauffée à blanc (silhouette blanche, gardée)
+    let c = WHITE.get(t.img);
+    if (!c) { c = mk(t.img.width >> 1, t.img.height >> 1); const x = c.getContext('2d'); x.drawImage(t.img, 0, 0, c.width, c.height); x.globalCompositeOperation = 'source-in'; x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); WHITE.set(t.img, c); }
+    return { img: c, cw: t.cw * c.width / t.img.width, bw: t.bw };
+  };
+  // L'image en perspective, tournée de ry autour de son axe vertical : des bandes verticales, plus hautes du côté qui vient
+  // vers nous. Le contexte est déjà au centre de la carte ; `org` (abscisse de ce centre) pose les bandes sur des pixels
+  // entiers, pour qu'aucune couture ne se voie.
+  const quad = (t, w, ry, org) => {
+    const { img, cw } = t, c = Math.cos(ry), s = Math.sin(ry), sg = c >= 0 ? 1 : -1, sc = w / cw, iw = img.width, tw = iw * sc, hh = img.height * sc, D = w * PERSP, n = sg * w * THICK / 2;
+    if (Math.abs(c) < 0.012) return;
+    if (Math.abs(s) < 0.004) { ctx.drawImage(img, -tw / 2, -hh / 2, tw, hh); return; }
+    const N = clamp(Math.ceil(Math.abs(c) * tw * k / 1.5), 12, 96), ov = org == null ? 0.7 / k : 0;
+    let px = 0, pp = 0;
+    for (let i = 0; i <= N; i++) {
+      const u = (i / N - 0.5) * tw * sg, p = D / (D + u * s - n * c);
+      let x = (u * c + n * s) * p; if (org != null) x = Math.round((x + org) * k) / k - org;
+      if (i && x > px) { const pm = (p + pp) / 2; ctx.drawImage(img, (i - 1) * iw / N, 0, iw / N, img.height, px, -hh * pm / 2, x - px + ov, hh * pm); }
+      px = x; pp = p;
+    }
+  };
+  const edge = (w, ry, cols, bw = 1) => {     // la tranche de la carte, du côté tourné vers nous (bw : largeur du cadre)
+    const c = Math.cos(ry), s = Math.sin(ry); if (Math.abs(s) < 0.03) return;
+    const sg = c >= 0 ? 1 : -1, T = w * THICK, D = w * PERSP, u = (s > 0 ? -1 : 1) * w * bw * 0.488, vh = w * CARD_R / 2 - w * 0.085;
+    const P = (n) => { const p = D / (D + u * s - n * c); return [(u * c + n * s) * p, p]; };
+    const [xa, pa] = P(sg * T / 2), [xb, pb] = P(-sg * T / 2);
+    if (Math.abs(xa - xb) < 0.3) return;
+    const g = ctx.createLinearGradient(xa, 0, xb, 0); g.addColorStop(0, cols[0]); g.addColorStop(0.45, cols[1]); g.addColorStop(1, cols[2]);
+    ctx.fillStyle = g; ctx.strokeStyle = cols[1]; ctx.lineWidth = Math.min(4, Math.abs(xa - xb)); ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(xa, -vh * pa); ctx.lineTo(xb, -vh * pb); ctx.lineTo(xb, vh * pb); ctx.lineTo(xa, vh * pa); ctx.closePath(); ctx.stroke(); ctx.fill();
+  };
+  // Une carte en 3D : t est l'image du côté visible, ry l'angle autour de l'axe vertical, rz le penché.
+  // o.edge : couleurs de la tranche ; o.flash : la carte s'éclaire d'elle-même ; o.add : dessinée en lumière.
+  const card3 = (t, x, y, w, ry, o = {}) => {
+    const a = o.a ?? 1; if (a <= 0.005) return;
+    const org = o.rz ? null : x + S.sx;
+    ctx.save(); ctx.translate(x, y); if (o.rz) ctx.rotate(o.rz); ctx.globalAlpha = a;
+    if (o.add) ctx.globalCompositeOperation = 'lighter';
+    if (o.edge) edge(w, ry, o.edge, t ? t.bw : 1);
+    if (t) {
+      quad(t, w, ry, org);
+      if (o.flash > 0.01) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a * Math.min(1, o.flash); quad(t, w, ry, org); }
+    }
     ctx.restore(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
   };
-  const faceImg = (id) => { const hd = IMG['cardhd_' + id]; return hd && hd.width ? hd : IMG['card_' + id]; };
-  const cardFace = (id, x, y, w, o = {}) => {
+  const cardFace = (id, x, y, w, o = {}) => {        // carte à plat (résumé)
     const img = faceImg(id); if (!img || !img.width) return 0;
     const hh = w * img.height / img.width;
-    ctx.save(); ctx.globalAlpha = o.a ?? 1; ctx.translate(x, y); if (o.rot) ctx.rotate(o.rot); ctx.scale(o.sx ?? 1, 1);
+    ctx.save(); ctx.globalAlpha = o.a ?? 1; ctx.translate(x, y); if (o.rot) ctx.rotate(o.rot);
     ctx.drawImage(img, -w / 2, -hh / 2, w, hh); ctx.restore(); ctx.globalAlpha = 1;
     return hh;
   };
-  const shine = (id, x, y, w, p) => {       // bande de lumière qui traverse la carte (limitée à sa forme)
-    const img = faceImg(id); if (!img || !img.width || p <= 0 || p >= 1) return;
-    const sc = SPR.shine || (SPR.shine = mk(256, 352)), sx = sc.getContext('2d'), hh = w * img.height / img.width, bx = -140 + p * 640;
-    sx.globalCompositeOperation = 'source-over'; sx.clearRect(0, 0, 256, 352);
-    const g = sx.createLinearGradient(bx - 60, 0, bx + 60, 0); g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, 'rgba(255,255,255,.7)'); g.addColorStop(1, 'rgba(255,255,255,0)');
-    sx.setTransform(1, 0, -0.5, 1, 0, 0); sx.fillStyle = g; sx.fillRect(-300, 0, 1200, 352); sx.setTransform(1, 0, 0, 1, 0, 0);
-    sx.globalCompositeOperation = 'destination-in'; sx.drawImage(img, 0, 0, 256, 352);
-    ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(sc, x - w / 2, y - hh / 2, w, hh); ctx.globalCompositeOperation = 'source-over';
+  // Reflets posés sur la face (limités à sa forme) : une bande de lumière qui la traverse, ou des reflets irisés
+  const sheen = (id, paint) => {
+    const img = faceImg(id); if (!img || !img.width) return null;
+    const sc = SPR.sheen || (SPR.sheen = mk(256, 352)), x = sc.getContext('2d');
+    x.globalCompositeOperation = 'source-over'; x.clearRect(0, 0, 256, 352); paint(x);
+    x.globalCompositeOperation = 'destination-in'; x.drawImage(img, 0, 0, 256, 352);
+    return { img: sc, cw: 256 };
+  };
+  const shineTex = (id, p) => sheen(id, (x) => {
+    const bx = -140 + p * 640, g = x.createLinearGradient(bx - 60, 0, bx + 60, 0);
+    g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, 'rgba(255,255,255,.75)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    x.setTransform(1, 0, -0.5, 1, 0, 0); x.fillStyle = g; x.fillRect(-300, 0, 1200, 352); x.setTransform(1, 0, 0, 1, 0, 0);
+  });
+  const holoTex = (id, p, rainbow) => sheen(id, (x) => {      // p glisse avec le balancement de la carte
+    const g = x.createLinearGradient(-260 + p * 260, 0, 260 + p * 260, 352);
+    for (let i = 0; i <= 8; i++) g.addColorStop(i / 8, rainbow ? `hsla(${(i * 55 + p * 200) % 360},100%,62%,${i % 2 ? 0.55 : 0.08})` : `rgba(255,${228 - (i % 4) * 14},${120 + (i % 3) * 40},${i % 2 ? 0.5 : 0.04})`);
+    x.fillStyle = g; x.fillRect(0, 0, 256, 352);
+  });
+  const ribbon = (pts, col) => {       // ruban de lumière derrière la carte en vol
+    if (pts.length < 3) return;
+    const a = pts[0], b = pts[pts.length - 1], g = ctx.createLinearGradient(a.x, a.y, b.x, b.y), c = rgbOf(col);
+    g.addColorStop(0, css(c, 0)); g.addColorStop(1, css(c, 1, 1, 30));
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = g;
+    for (const [wk, al] of [[0.6, 0.16], [0.34, 0.28], [0.12, 0.5]]) {
+      ctx.globalAlpha = al; ctx.lineWidth = b.w * wk; ctx.beginPath(); ctx.moveTo(a.x, a.y);
+      for (let i = 1; i < pts.length - 1; i++) ctx.quadraticCurveTo(pts[i].x, pts[i].y, (pts[i].x + pts[i + 1].x) / 2, (pts[i].y + pts[i + 1].y) / 2);
+      ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+    ctx.restore(); ctx.globalAlpha = 1;
+  };
+  const flare = (x, y, col, a) => {    // trait de lumière quand la carte passe sur la tranche
+    if (a <= 0.01) return;
+    glow(x, y, 120, '#ffffff', a, 11); glow(x, y, 300, col, a * 0.7, 4.4); glow(x, y, 1500, col, a * 0.55, 0.045); glow(x, y, 900, '#ffffff', a * 0.6, 0.03);
+  };
+  const orbit = (R, n, x, y, w, front, al) => {  // petites lumières qui tournent autour de la carte (devant ou derrière)
+    for (let i = 0; i < n; i++) {
+      const an = S.time * 1.7 + i * 6.2832 / n, z = Math.sin(an); if ((z > 0) !== front) continue;
+      const px = x + Math.cos(an) * w * 0.74, py = y + z * w * 0.2 + Math.cos(an) * w * 0.34 * (i % 2 ? 1 : -1) + Math.sin(S.time * 2 + i) * 10;
+      const col = R.rainbow ? RAINBOW[i % RAINBOW.length] : R.glow, sz = 56 + 26 * z;
+      glow(px, py, sz * 1.9, col, 0.5 * al); glow(px, py, sz * 0.6, '#ffffff', 0.9 * al);
+      if (al > 0.5 && Math.random() < 0.3) fx('@', px, py, { life: 0.5, s0: sz * 0.5, s1: 4, col, add: true, back: !front, vy: 30 });
+    }
   };
 
   // ---------- textes et petits éléments ----------
@@ -291,6 +386,7 @@ export async function openChestAnim(loot) {
     S.ch.x += (S.chT.x - S.ch.x) * e2; S.ch.y += (S.chT.y - S.ch.y) * e2; S.ch.s += (S.chT.s - S.ch.s) * e2;
     S.sqv += (-S.sq * 300 - S.sqv * 13) * dt; S.sq += S.sqv * dt;
     const sx = S.shake > 0.3 ? rand(-1, 1) * S.shake : 0, sy = S.shake > 0.3 ? rand(-1, 1) * S.shake : 0; S.shake *= Math.pow(0.004, dt);
+    S.sx = sx; S.streak *= Math.pow(0.0006, dt);
     const cur = S.i >= 0 && S.i < stacks.length ? stacks[S.i] : null, R = cur ? RARITY[cur.rarity] : null;
     backdrop();
     ctx.save(); ctx.translate(sx, sy); lights(); motes(dt); ctx.restore();
@@ -298,7 +394,11 @@ export async function openChestAnim(loot) {
     ctx.save(); ctx.translate(sx, sy);
     stepParts(dt, true);
     phases[S.phase](dt, cur, R);
-    stepParts(dt, false); stepRings(dt);
+    if (S.prev) {        // la carte qu'on vient de voir s'envole
+      const p = S.prev; p.t += dt; const q = clamp(p.t / 0.32, 0, 1), e = q * q;
+      if (q >= 1) S.prev = null; else card3(faceTex(p.id), CX + p.side * 260 * e, CARD_Y - 1150 * e, CARD_W * (1 - 0.4 * e), p.side * 1.3 * e, { rz: p.side * 0.5 * e, a: 1 - e * e, edge: EDGE[p.rarity] });
+    }
+    stepParts(dt, false); stepBolts(dt); stepRings(dt);
     ctx.restore();
     if (S.flash > 0.01) { ctx.fillStyle = `rgba(${S.flashCol},${Math.min(1, S.flash)})`; ctx.fillRect(0, 0, W, H); S.flash *= Math.pow(0.003, dt); }
   }
@@ -381,71 +481,100 @@ export async function openChestAnim(loot) {
       if (S.t > 1.35 || S.skip) nextCard();
     },
     card(dt, c, R) {  // le dos de la carte jaillit de la cage et vole jusqu'au centre en tournoyant
-      const T = 0.52, kf = clamp(S.t / T, 0, 1), e = easeIO(kf), from = S.from, side = S.i % 2 ? 1 : -1;
+      const T = S.skip ? 0.3 : 0.6, kf = clamp(S.t / T, 0, 1), e = easeIO(kf), from = S.from, side = S.i % 2 ? 1 : -1;
       S.ray.pT = 0.3 + 0.5 * kf;
       chest(openFrame());
-      const px = (from.x + CX) / 2 + side * 250, py = Math.min(from.y, CARD_Y) - 220;
+      const px = (from.x + CX) / 2 + side * 270, py = Math.min(from.y, CARD_Y) - 240;
       const x = (1 - e) * (1 - e) * from.x + 2 * (1 - e) * e * px + e * e * CX, y = (1 - e) * (1 - e) * from.y + 2 * (1 - e) * e * py + e * e * CARD_Y;
-      const w = CARD_W * (0.1 + 0.9 * ease(kf)), flip = Math.cos((1 - e) * 6.2832), rot = (1 - e) * side * -1.1;
-      S.trail.push({ x, y, w }); if (S.trail.length > 12) S.trail.shift();
-      S.trail.forEach((p, i) => glow(p.x, p.y, p.w * (0.8 + i * 0.06), R.color, 0.05 + 0.03 * i));
-      if (Math.random() < 0.7) fx('star_big', x + rand(-40, 40), y + rand(-40, 40), { s0: 0.12, s1: 0.02, life: 0.45, add: true, vr: 4 });
-      cardBack(c.rarity, 0, x, y, w, { rot, sx: Math.abs(flip) < 0.06 ? 0.06 : flip });
+      const w = CARD_W * (0.1 + 0.9 * ease(kf));
+      S.trail.push({ x, y, w }); if (S.trail.length > 14) S.trail.shift();
+      ribbon(S.trail, R.color);
+      glow(x, y, w * 2.4, R.color, 0.4);
+      if (Math.random() < 0.8) fx('star_big', x + rand(-50, 50), y + rand(-50, 50), { s0: 0.13, s1: 0.02, life: 0.5, add: true, vr: 4 });
+      if (Math.random() < 0.6) fx('@', x + rand(-w, w) * 0.3, y + rand(-w, w) * 0.4, { life: 0.5, s0: rand(18, 40), s1: 4, col: R.rainbow ? RAINBOW[Math.floor(rand(0, 6))] : R.glow, add: true, back: true });
+      card3(backTex(c.rarity), x, y, w, (1 - e) * side * 9.4248, { rz: (1 - e) * side * -0.9, edge: EDGE[c.rarity] });
       if (S.t >= T) {
         S.trail.length = 0; ring(CX, CARD_Y, R.color, { r0: 120, r1: 420, w: 14, life: 0.35 });
         if (SUSPENSE[c.rarity] && !S.skip) { go('suspense'); play('surge', { v: 0.7, rate: c.rarity === 'epic' ? 1.15 : c.rarity === 'rare' ? 1.4 : 1 }); } else { go('reveal'); S.shown = false; }
       }
     },
-    suspense(dt, c, R) {    // les cartes rares se font attendre : la carte bat comme un cœur, la lumière afflue
-      const dur = SUSPENSE[c.rarity], kf = clamp(S.t / dur, 0, 1), beat = Math.pow(Math.max(0, Math.sin(S.t * (8 + 10 * kf))), 6);
+    suspense(dt, c, R) {    // les cartes rares se font attendre : la pénombre tombe, la carte bat comme un cœur, la lumière afflue
+      const dur = SUSPENSE[c.rarity], kf = clamp(S.t / dur, 0, 1), ph = S.t * (7 + 5 * kf), beat = Math.pow(Math.max(0, Math.sin(ph)), 6);
+      const pick = () => (R.rainbow ? RAINBOW[Math.floor(rand(0, 6))] : R.color), strong = c.rarity !== 'rare';
       S.ray.pT = 0.5 + 1.2 * kf; S.shake = Math.max(S.shake, 1.5 + 9 * kf * kf);
       chest(openFrame());
-      if (Math.random() < 0.45 + 0.5 * kf) inward(CX, CARD_Y, R.rainbow ? RAINBOW[Math.floor(rand(0, 6))] : Math.random() < 0.25 ? '#ffffff' : R.color, 380, 700);
-      if (c.rarity !== 'rare' && Math.random() < 0.12 + kf * 0.45) fx(c.rarity === 'epic' ? 'electric' : c.rarity === 'ultimate' ? (Math.random() < 0.5 ? 'lightning' : 'electric') : 'lightning', CX + rand(-230, 230), CARD_Y + rand(-300, 300), { s0: 0.3, s1: 0.6, life: 0.22, add: true, rot: rand(0, 6) });
-      glow(CX, CARD_Y, 700 + 300 * kf + 80 * beat, R.color, 0.3 + 0.5 * kf);
-      cardBack(c.rarity, 0, CX + rand(-1, 1) * 7 * kf, CARD_Y - 14 * kf + rand(-1, 1) * 5 * kf, CARD_W * (1 + 0.05 * beat + 0.05 * kf), { rot: rand(-1, 1) * 0.04 * kf });
-      if (kf > 0.25) cardBack(c.rarity, 0, CX, CARD_Y - 14 * kf, CARD_W * (1 + 0.05 * beat + 0.05 * kf), { add: true, a: 0.35 * kf * (0.4 + 0.6 * beat) });
+      ctx.fillStyle = `rgba(5,3,14,${0.42 * easeIO(kf * 1.6)})`; ctx.fillRect(-60, -60, W + 120, H + 120);
+      const n = Math.floor(ph / 6.2832);       // une onde se resserre sur la carte à chaque battement
+      if (n !== S.beatN) { S.beatN = n; ring(CX, CARD_Y, pick(), { r0: 820, r1: 300, w: 12 + 10 * kf, life: 0.42, inv: true }); if (strong) play('tick', { v: 0.2 + 0.2 * kf, rate: 0.7 + 0.5 * kf }); }
+      if (Math.random() < 0.45 + 0.5 * kf) inward(CX, CARD_Y, Math.random() < 0.25 ? '#ffffff' : pick(), 380, 700);
+      if (strong && Math.random() < 0.06 + kf * 0.3) {        // éclairs qui s'échappent de la carte
+        const an = rand(0, 6.2832), r0 = CARD_W * rand(0.5, 0.62), r1 = r0 + rand(140, 330) * (0.6 + 0.6 * kf);
+        bolt(CX + Math.cos(an) * r0, CARD_Y + Math.sin(an) * r0 * 1.2, CX + Math.cos(an + rand(-0.3, 0.3)) * r1, CARD_Y + Math.sin(an + rand(-0.3, 0.3)) * r1 * 1.2, pick());
+      }
+      glow(CX, CARD_Y, 760 + 340 * kf + 90 * beat, R.color, 0.35 + 0.5 * kf);
+      card3(backTex(c.rarity), CX + rand(-1, 1) * 7 * kf, CARD_Y - 18 * kf + rand(-1, 1) * 5 * kf, CARD_W * (1 + 0.05 * beat + 0.06 * kf), 0.24 * kf * Math.sin(S.t * 9),
+        { edge: EDGE[c.rarity], flash: kf > 0.15 ? 0.55 * kf * (0.3 + 0.7 * beat) : 0 });
       if (S.t >= dur || S.skip) { go('reveal'); S.shown = false; }
     },
     reveal(dt, c, R) {
-      const SPIN = 0.32;
+      // La carte recule un peu, s'élance, tourne sur elle-même (plus de tours pour les cartes rares) et se pose face à nous
+      // avec un léger rebond. Elle ne montre sa face qu'au dernier demi-tour, chauffée à blanc.
+      const N = S.skip ? 1 : SPIN[c.rarity][0], dur = S.skip ? 0.3 : SPIN[c.rarity][1], A = 0.17, kf = S.t / dur, k1 = clamp(kf, 0, 1);
+      const big = c.rarity === 'legendary' || c.rarity === 'ultimate', col = R.rainbow ? '#ffffff' : R.color;
+      const st = clamp((kf - A) / (1 - A), 0, 1), bump = Math.sin(Math.PI * clamp((st - 0.6) / 0.4, 0, 1));
+      const ang = kf < A ? -0.3 * easeIO(kf / A) : -0.3 + (N * Math.PI + 0.3) * (1 - Math.pow(1 - st, 2.4)) + 0.22 * bump * bump;
+      const side = Math.floor((ang + Math.PI / 2) / Math.PI), faceUp = side >= N;
       setRay(rayCol(R), CX, CARD_Y);
       chest(openFrame());
-      if (S.t < SPIN) {        // la carte pivote sur la tranche (images de la planche)
-        S.ray.pT = 0.9 + 0.7 * S.t / SPIN;
-        if (!S.flipSnd) { S.flipSnd = true; play('card_flip', { v: 0.7 }); }
-        glow(CX, CARD_Y, 760, R.color, 0.5);
-        cardBack(c.rarity, 1 + Math.min(5, Math.floor(S.t / SPIN * 6)), CX, CARD_Y, CARD_W);
-        return;
+      if (!S.flipSnd) { S.flipSnd = true; S.side = 0; play('card_flip', { v: 0.7 }); }
+      if (side > S.side) {          // la carte passe sur la tranche
+        S.side = side; S.streak = 1;
+        if (!faceUp) play('card_flip', { v: 0.4, rate: 1.08 + side * 0.07 });
+        lightBurst(CX, CARD_Y, 6, R.rainbow ? RAINBOW[side % 6] : R.color, 800, 40);
       }
-      const t = S.t - SPIN, big = c.rarity === 'legendary' || c.rarity === 'ultimate';
-      if (!S.shown) {
-        S.shown = true; S.flipSnd = false; S.shownAt = S.time;
-        S.flash = c.rarity === 'common' ? 0.4 : 0.8; S.flashCol = c.rarity === 'ultimate' ? '255,225,255' : '255,255,255';
-        S.shake = { common: 6, rare: 10, epic: 18, legendary: 28, ultimate: 36 }[c.rarity]; S.ray.pT = 1.5;
+      if (faceUp && !S.shown) {
+        S.shown = true; S.shownAt = S.time;
+        S.flash = { common: 0.3, rare: 0.45, epic: 0.55, legendary: 0.7, ultimate: 0.8 }[c.rarity]; S.flashCol = c.rarity === 'ultimate' ? '255,225,255' : '255,255,255';
+        S.shake = { common: 6, rare: 10, epic: 18, legendary: 28, ultimate: 36 }[c.rarity];
         play('rev_' + c.rarity); if (c.isNew) play('new_card', { at: 0.35 });
         play('v_' + c.id, { at: 0.25, v: 0.7 });
         const n = { common: 10, rare: 14, epic: 20, legendary: 30, ultimate: 40 }[c.rarity];
         burst('star_big', CX, CARD_Y, n, { s: 0.3, sp0: 300, sp1: 950, up: 200, add: true });
         ring(CX, CARD_Y, '#ffffff', { r0: 150, r1: 760, w: 34, life: 0.5 }); ring(CX, CARD_Y, R.color, { r0: 100, r1: 620, w: 24, life: 0.7, delay: 0.07 });
-        if (R.rainbow) RAINBOW.forEach((col) => lightBurst(CX, CARD_Y, 8, col, 1300, 56)); else lightBurst(CX, CARD_Y, n * 1.4, R.color, 1200, 54);
+        if (R.rainbow) RAINBOW.forEach((rc) => lightBurst(CX, CARD_Y, 8, rc, 1300, 56)); else lightBurst(CX, CARD_Y, n * 1.4, R.color, 1200, 54);
         fx(PILLAR[c.rarity], CX, CARD_Y + 120, { s0: 1, s1: 2.8, life: 1.1, add: true, back: true });
         if (big) { burst('confetti', CX, CARD_Y - 200, 18, { s: 0.5, sp0: 300, sp1: 850, up: 520, g: 600, life: 2.4 }); fx('crown_burst', CX, 120, { s0: 0.2, s1: 0.62, life: 1.6, vy: -14, back: true }); }
         if (c.rarity === 'epic' || c.rarity === 'ultimate') fx('purple_ring', CX, CARD_Y, { s0: 0.5, s1: 3.2, life: 0.8, add: true, back: true });
       }
-      S.ray.pT = big ? 1.35 : 1.05;
+      const t = S.shown ? S.time - S.shownAt : -1, rest = clamp((kf - 1) / 0.5, 0, 1);
+      S.ray.pT = S.shown ? (t < 0.3 ? 1.5 : big ? 1.35 : 1.05) : 0.9 + 0.7 * k1;
       // ambiance selon la rareté
-      if (c.rarity === 'ultimate' && Math.random() < 0.05) ring(CX, CARD_Y, RAINBOW[Math.floor(rand(0, 6))], { r0: 200, r1: 640, w: 12, life: 0.8 });
-      if (Math.random() < 0.22) fx('star_big', CX + rand(-290, 290), CARD_Y + rand(-360, 360), { s0: 0.03, s1: 0.15, life: 0.7, add: true });
-      if (c.rarity !== 'common' && Math.random() < (big ? 0.6 : 0.3)) fx('@', CX + rand(-270, 270), CARD_Y + rand(120, 340), { vy: rand(-260, -120), vx: rand(-30, 30), life: rand(0.8, 1.4), s0: rand(14, 34), s1: 4, col: R.rainbow ? RAINBOW[Math.floor(rand(0, 6))] : R.glow, add: true, back: Math.random() < 0.5 });
-      // la carte finit de se retourner, face visible, avec un rebond
-      const sx = Math.max(0.05, back(t / 0.22, 2.2)), pop = 1 + 0.2 * (1 - ease(t / 0.4)), fy = CARD_Y + Math.sin(S.time * 2) * 5, w = CARD_W * pop;
+      if (S.shown) {
+        if (c.rarity === 'ultimate' && Math.random() < 0.05) ring(CX, CARD_Y, RAINBOW[Math.floor(rand(0, 6))], { r0: 200, r1: 640, w: 12, life: 0.8 });
+        if (Math.random() < 0.22) fx('star_big', CX + rand(-290, 290), CARD_Y + rand(-360, 360), { s0: 0.03, s1: 0.15, life: 0.7, add: true });
+        if (c.rarity !== 'common' && Math.random() < (big ? 0.6 : 0.3)) fx('@', CX + rand(-270, 270), CARD_Y + rand(120, 340), { vy: rand(-260, -120), vx: rand(-30, 30), life: rand(0.8, 1.4), s0: rand(14, 34), s1: 4, col: R.rainbow ? RAINBOW[Math.floor(rand(0, 6))] : R.glow, add: true, back: Math.random() < 0.5 });
+      } else if (Math.random() < 0.5) inward(CX, CARD_Y, Math.random() < 0.3 ? '#ffffff' : col, 300, 560);
+      // la carte : elle se soulève pendant le pivot, gonfle à la révélation, puis se balance doucement
+      const lift = Math.sin(k1 * Math.PI), sway = rest * 0.13 * Math.sin((S.time - (S.shownAt || 0)) * 1.25 + 0.6);
+      const pop = 1 + 0.1 * lift + (S.shown ? 0.16 * (1 - ease(t / 0.42)) : 0), w = CARD_W * pop, fy = CARD_Y - 26 * lift + rest * Math.sin(S.time * 2) * 5, ry = ang + sway;
+      const tex = faceUp ? faceTex(c.id) : backTex(c.rarity), hot = faceUp ? clamp(1 - t / 0.38, 0, 1) : clamp((k1 - 0.1) * 1.6, 0, 0.85) * (side >= N - 1 ? 1 : 0.55);
+      const nOrb = S.shown ? ORBIT[c.rarity] || 0 : 0, oa = clamp(t - 0.3, 0, 1);
       glow(CX, fy, 860 + 60 * Math.sin(S.time * 3), R.color, 0.5);
-      const hh = cardFace(c.id, CX, fy, w, { sx: sx * (1 + 0.012 * Math.sin(S.time * 1.7)), rot: 0.012 * Math.sin(S.time * 1.3) });
-      if (t < 0.32) cardBack(c.rarity, 7, CX, fy, w, { add: true, a: 1 - t / 0.32, sx });        // éclat blanc de la planche par-dessus
-      const sh = ((S.time - S.shownAt - 0.5) % 2.6) / 0.6; if (t > 0.5) shine(c.id, CX, fy, w, sh);
+      if (nOrb && oa > 0) orbit(R, nOrb, CX, fy, w, false, oa);
+      if (!faceUp && N > 1 && kf > A) for (const [d, al] of [[0.5, 0.16], [0.26, 0.3]]) {        // sillage du pivot
+        const g = ang - d * Math.min(1, N / 3); card3(Math.floor((g + Math.PI / 2) / Math.PI) >= N ? null : backTex(c.rarity), CX, fy, w, g, { a: al });
+      }
+      card3(tex, CX, fy, w, ry, { edge: EDGE[c.rarity], rz: rest * 0.012 * Math.sin(S.time * 1.3) });
+      if (tex && hot > 0.01) card3(whiteOf(tex), CX, fy, w, ry, { a: hot, add: true });
+      if (faceUp && t > 0.45) {
+        if (big) { const ht = holoTex(c.id, 0.5 + sway * 3.4 + 0.2 * Math.sin(S.time * 0.7), !!R.rainbow); if (ht) card3(ht, CX, fy, w, ry, { add: true, a: 0.3 * clamp((t - 0.45) / 0.4, 0, 1) }); }
+        const sp = ((t - 0.5) % 2.6) / 0.6; if (sp > 0 && sp < 1) { const st = shineTex(c.id, sp); if (st) card3(st, CX, fy, w, ry, { add: true }); }
+      }
+      flare(CX, fy, col, S.streak);
+      if (nOrb && oa > 0) orbit(R, nOrb, CX, fy, w, true, oa);
+      if (!S.shown) return;
       // rareté, nouveau, nombre, progression
-      const a = clamp((t - 0.12) / 0.25, 0, 1), za = back((t - 0.12) / 0.3);
+      const hh = w * CARD_R, a = clamp((t - 0.12) / 0.25, 0, 1), za = back((t - 0.12) / 0.3);
       if (a > 0) {
         const rc = rgbOf(R.color), rw = 150 + R.name.length * 21;
         ctx.save(); ctx.globalAlpha = a; ctx.translate(CX, 236 - 30 * (1 - za));
@@ -480,7 +609,7 @@ export async function openChestAnim(loot) {
         ctx.globalAlpha = 1;
       }
       if (t > 0.6) hint(left() > 0 ? 'Touche pour continuer' : loot.direct ? 'Touche pour revenir' : 'Touche pour finir', loot.direct ? 1560 : 1636, loot.direct ? 38 : 30);
-      if ((TEST || S.skip) && t > 0.12) tap();
+      if (TEST || S.skip) tap();
     },
     summary() {
       S.ray.pT = 0.6;
@@ -516,7 +645,9 @@ export async function openChestAnim(loot) {
     },
   };
   function nextCard() {
-    S.i++; S.t = 0; S.shown = false; S.stamp = false; S.cn = 0; S.cntAt = S.time;
+    const seen = S.phase === 'reveal' && S.i >= 0 && S.i < stacks.length ? stacks[S.i] : null;
+    if (seen && !S.skip) S.prev = { id: seen.id, rarity: seen.rarity, t: 0, side: S.i % 2 ? -1 : 1 };
+    S.i++; S.t = 0; S.shown = false; S.shownAt = 0; S.flipSnd = false; S.side = 0; S.beatN = -1; S.stamp = false; S.cn = 0; S.cntAt = S.time;
     if (S.i >= stacks.length && loot.direct) { close(); return; }
     if (S.i >= stacks.length) {        // la cage vide disparaît dans un nuage, place au résumé
       burst('smoke_puff', S.ch.x, S.ch.y - 110, 8, { s: 0.3, sp0: 100, sp1: 320, g: 60, life: 0.8 }); lightBurst(S.ch.x, S.ch.y - 110, 12, C.color, 600, 40);
@@ -524,14 +655,14 @@ export async function openChestAnim(loot) {
     }
     const c = stacks[S.i], R = RARITY[c.rarity];
     S.phase = 'card'; play('card_fly', { rate: 1 + S.i * 0.03 });
-    S.chT = SMALL; S.bgT = rgbOf(R.color); setRay(S.ray.col, CX, CARD_Y);
+    S.chT = SMALL; S.bgT = rgbOf(R.color); setRay(rayCol(R), CX, CARD_Y);
     S.from = loot.direct ? { x: CX, y: H + 260 } : mouth(); S.sq = 0.12; S.sqv = 0;
     if (!loot.direct) { burst('star_big', S.from.x, S.from.y, 8, { s: 0.2, sp0: 150, sp1: 500, up: 200, add: true, life: 0.6 }); lightBurst(S.from.x, S.from.y, 10, R.color, 700, 44); }
   }
   function tap() {
     if (S.phase === 'idle') { go('shake'); play('chest_shake'); return; }
     if (S.phase === 'pour' && S.t > 0.35) { nextCard(); return; }
-    if (S.phase === 'reveal' && S.shown && S.t > (TEST || S.skip ? 0.45 : 0.85)) { nextCard(); return; }
+    if (S.phase === 'reveal' && S.shown && S.time - S.shownAt > (TEST || S.skip ? 0.3 : 0.55)) { nextCard(); return; }
     if (S.phase === 'summary' && (S.t > 0.5 || TEST)) close();
   }
   let resolve, raf = 0, last = performance.now();

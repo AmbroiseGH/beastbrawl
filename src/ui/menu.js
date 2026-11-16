@@ -140,6 +140,8 @@ let omega = 30;            // raideur du ressort qui amène la rangée sur la pa
 let raf = 0, lastT = 0, shown = -1;   // shown : position de la rangée au dernier dessin
 let g = null;              // le geste en cours (doigt posé)
 const dragging = () => !!g && g.drag;
+// Un autre geste a pris le doigt (une carte qu'on soulève) : il ne fera pas glisser les pages
+export const cancelSwipe = () => { if (g && !g.drag) g = null; };
 
 function fill(t) { const p = panes[t]; p.pg.textContent = ''; pages[t] && pages[t](p.pg); }
 function mount(t) {

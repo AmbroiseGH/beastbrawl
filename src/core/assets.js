@@ -1,5 +1,5 @@
 // Chargement des images et des atlas. Le nécessaire des menus est chargé au démarrage ; les grosses planches
-// (animaux en combat, coffres, révélations, arènes) sont chargées à la demande avec ensure(), puis gardées.
+// (animaux en combat, coffres, dos de cartes, arènes) sont chargées à la demande avec ensure(), puis gardées.
 import { ANIMAL_IDS } from '../data/animals.js';
 import { CHEST_IDS } from '../data/cards.js';
 
@@ -18,7 +18,7 @@ const UI_PRELOAD = ['btn_yellow', 'btn_green', 'btn_blue', 'btn_purple', 'btn_re
   'ic_close', 'ic_ok', 'ic_info', 'ic_settings', 'ic_play', 'ic_back', 'ic_crown', 'ic_shield_red', 'ic_shield_blue', 'ic_target',
   'av_tiger', 'av_gorilla', 'av_eagle', 'av_tiger2', 'av_bulldog', 'av_monkey', 'av_croc', 'av_orang', 'order_whistle', 'order_attack',
   ...['shop', 'collection', 'main', 'clan', 'ranked'].flatMap((t) => ['navcap_' + t, 'navring_' + t, 'navfill_' + t])];
-const BOOT_JSONS = { fx: 'fx/fx.json', font: 'fonts/bitmap.json', arena: 'arena/arena.json', chestMeta: 'chests/meta.json?v=3', revealMeta: 'cards/reveal_meta.json?v=3' };
+const BOOT_JSONS = { fx: 'fx/fx.json', font: 'fonts/bitmap.json', arena: 'arena/arena.json', chestMeta: 'chests/meta.json?v=3' };
 
 const pending = {};
 function loadImage(src) {
@@ -49,7 +49,7 @@ export function arenaAssets(n) {
 }
 // Planches haute définition (?v=3 : leur découpage a changé, l'ancienne copie gardée hors ligne ne doit pas servir)
 export const chestAssets = (tier) => image('sheet_' + tier, 'chests/' + tier + '.webp?v=3');
-export const revealAssets = (r) => image('reveal_' + r, 'cards/reveal_' + r + '.webp?v=3');
+export const backAssets = (r) => image('back_' + r, 'cards/back_' + r + '.webp');          // dos de carte (cadre de 640 px au centre d'une image de 940)
 export const cardHd = (id) => image('cardhd_' + id, 'cards/' + id + '_hd.webp');      // grande carte, pour la révélation
 
 // onProgress(0…1). Ne rejette jamais : une image manquante n'empêche pas de jouer.

@@ -1,5 +1,5 @@
 // Collection : le deck de 8 cartes, toutes les cartes du jeu (avec leur progression), la fiche de chaque animal
-// avec un petit aperçu animé de ses attaques, l'amélioration et la composition du deck.
+// avec un petit aperçu animé de ses attaques, l'amélioration et la composition du deck (en glissant les cartes : deckdrag.js).
 import { $, h, fmt, clamp, rand, wait, TEST } from '../core/utils.js';
 import { S } from '../core/save.js';
 import { sfx, play } from '../core/audio.js';
@@ -11,6 +11,7 @@ import { register, render } from './menu.js';
 import { modal, p, toast } from './ui.js';
 import { celebrate, pct } from './pages.js';
 import { drawUnitFrame, label } from '../render/view.js';
+import { bindDeckDrag, dragBusy } from './deckdrag.js';
 
 // ---------- la page ----------
 register('collection', (pg) => {
@@ -21,19 +22,21 @@ register('collection', (pg) => {
   const list = h('div', { class: 'co-list' },
     h('div', { class: 'co-head' }, h('div', { class: 't sm' }, `Mon deck (${deck.length}/${DECK_SIZE})`), h('div', { class: 't xs cream', html: `Coût moyen <b class="co-aura">${avg.toFixed(1).replace('.', ',')}</b>` })),
     h('div', { class: 'co-grid deck' }, deck.map(cardCell), Array.from({ length: DECK_SIZE - deck.length }, () => h('div', { class: 'cc empty' }, h('div', { class: 'cc-card' }, h('span', { class: 't' }, '+'))))),
-    h('div', { class: 'co-head' }, h('div', { class: 't sm' }, 'Collection'), h('div', { class: 't xs cream' }, 'Touche une carte pour la voir')),
+    h('div', { class: 'co-head' }, h('div', { class: 't sm' }, 'Collection'), h('div', { class: 't xs cream' }, 'Maintiens une carte pour la glisser')),
     h('div', { class: 'co-grid' }, rest.map(cardCell)));
   pg.append(list);
+  bindDeckDrag(list);
 });
 
 // Une carte de la grille : image, coût en Aura, niveau, barre de cartes (verte quand l'amélioration est possible)
 function cardCell(id) {
   const a = ANIMALS[id], has = owned(id);
-  if (!has) return h('button', { class: 'cc locked', 'aria-label': a.name, onclick: () => { sfx.click(); cardSheet(id); } },
+  const open = () => { if (dragBusy()) return; sfx.click(); cardSheet(id); };       // (pas de fiche au lâcher d'une carte qu'on vient de glisser)
+  if (!has) return h('button', { class: 'cc locked', 'aria-label': a.name, dataset: { id }, onclick: open },
     h('div', { class: 'cc-card' }, h('img', { src: `assets/cards/${id}.webp`, alt: '', draggable: 'false' }), h('i', { class: 'cc-lock' })),
     h('div', { class: 'cc-info t xs' }, 'Dans les cages'));
   const lv = levelOf(id), need = upgradeCost(id, lv), got = cardsOf(id), ready = upgradeReady(id);
-  return h('button', { class: 'cc' + (ready ? ' up' : ''), 'aria-label': a.name, onclick: () => { sfx.click(); cardSheet(id); } },
+  return h('button', { class: 'cc' + (ready ? ' up' : ''), 'aria-label': a.name, dataset: { id }, onclick: open },
     h('div', { class: 'cc-card' }, h('img', { src: `assets/cards/${id}.webp`, alt: '', draggable: 'false' }), h('div', { class: 'cc-cost t' }, a.cost), ready ? h('i', { class: 'cc-arrow' }) : null),
     h('div', { class: 'cc-lv t xs' }, lv >= MAX_LEVEL ? 'Niv. max' : 'Niv. ' + lv),
     h('div', { class: 'cc-bar' + (ready ? ' full' : '') }, h('b', { style: { width: (need ? Math.min(100, got / need.cards * 100) : 100) + '%' } }), h('span', { class: 't xs' }, need ? `${fmt(got)}/${fmt(need.cards)}` : 'MAX')));
