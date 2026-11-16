@@ -146,8 +146,12 @@ function attackPreview(id) {
 
   // ce que fait le coup quand il touche le mannequin (ou autour de l'animal)
   function impact(k, special) {
-    st.hitT = 0.25; st.wob = 1;
     const hx = tx, hy = gy - 110;
+    if (k.guard) {      // l'orang-outan se protège la tête : rien ne le touche, rien ne part
+      fx('ring_yellow', ax, gy - 10, { s0: 0.3, s1: 1.2, life: 0.7, add: true }); fx('shield', ax, gy - 160, { s0: 0.25, s1: 0.42, life: 1.1, a: 0.9 }); sound('shield', { v: 0.7, rate: 1.2 });
+      return;
+    }
+    st.hitT = 0.25; st.wob = 1;
     sound(k.mult >= 2 || k.splash ? 'hit_heavy' : 'hit', { v: 0.6 });
     fx(k.proj ? 'burst_yellow' : (a.rarity === 'epic' || a.rarity === 'ultimate' ? 'slash_red' : 'claw_yellow'), hx, hy, { s0: 0.15, s1: 0.45, life: 0.35, add: true });
     if (k.splash) { fx('dust_ring', hx, gy - 6, { s0: 0.3, s1: 0.9 + k.splash * 0.3, life: 0.5 }); burst('rocks', hx, gy - 20, 5, { s: 0.12, up: 220 }); }
@@ -159,6 +163,10 @@ function attackPreview(id) {
     if (k.heal) { fx('ring_green', ax, gy - 10, { s0: 0.3, s1: 1.2, life: 0.7, add: true }); for (let i = 0; i < 5; i++) fx('heal_plus', ax + rand(-70, 70), gy - rand(40, 200), { s0: 0.08, s1: 0.14, life: 0.9, vy: -70, delay: i * 0.07 }); sound('heal', { v: 0.7 }); }
     if (k.buff) { fx('ring_red', ax, gy - 10, { s0: 0.3, s1: 1.4, life: 0.7, add: true }); for (let i = 0; i < 8; i++) fx('fire1', ax + rand(-70, 70), gy - rand(20, 180), { s0: 0.1, s1: 0.04, life: 0.6, vy: -120, delay: i * 0.05 }); sound('horn', { v: 0.5 }); }
     if (k.armor) { fx('shield', ax, gy - 120, { s0: 0.25, s1: 0.4, life: 1.1, a: 0.9 }); sound('shield', { v: 0.7 }); }
+    if (k.shield) { fx('ring_green', ax, gy - 10, { s0: 0.3, s1: 1.3, life: 0.7, add: true }); fx('shield', ax, gy - 150 - lift, { s0: 0.2, s1: 0.36, life: 1, a: 0.9 }); sound('shield', { v: 0.6 }); }
+    if (k.rage) { fx('ring_red', ax, gy - 10, { s0: 0.3, s1: 1.4, life: 0.7, add: true }); for (let i = 0; i < 8; i++) fx('fire1', ax + rand(-70, 70), gy - rand(20, 180), { s0: 0.1, s1: 0.04, life: 0.6, vy: -120, delay: i * 0.05 }); sound('slam', { v: 0.5 }); }
+    if (k.plate) { fx('shield', ax, gy - 130, { s0: 0.25, s1: 0.4, life: 1.1, a: 0.9 }); for (let i = 0; i < 6; i++) fx('star_big', ax + rand(-60, 60), gy - rand(30, 140), { s0: 0.06, s1: 0.18, life: 0.4, add: true, delay: i * 0.06 }); sound('shield', { v: 0.7, rate: 0.8 }); }
+    if (k.slow) burst('ice_burst', hx, gy - 80, 3, { s: 0.14, up: 160 });
   }
   function startAtk(k) {
     st.fired = false;

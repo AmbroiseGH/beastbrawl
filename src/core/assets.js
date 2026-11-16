@@ -1,5 +1,5 @@
 // Chargement des images et des atlas. Le nécessaire des menus est chargé au démarrage ; les grosses planches
-// (animaux en combat, coffres, dos de cartes, arènes) sont chargées à la demande avec ensure(), puis gardées.
+// (animaux en combat, coffres, dos de cartes, la grande arène) sont chargées à la demande avec ensure(), puis gardées.
 import { ANIMAL_IDS } from '../data/animals.js';
 import { CHEST_IDS } from '../data/cards.js';
 
@@ -18,7 +18,7 @@ const UI_PRELOAD = ['btn_yellow', 'btn_green', 'btn_blue', 'btn_purple', 'btn_re
   'ic_close', 'ic_ok', 'ic_info', 'ic_settings', 'ic_play', 'ic_back', 'ic_crown', 'ic_shield_red', 'ic_shield_blue', 'ic_target',
   'av_tiger', 'av_gorilla', 'av_eagle', 'av_tiger2', 'av_bulldog', 'av_monkey', 'av_croc', 'av_orang', 'order_whistle', 'order_attack',
   ...['shop', 'collection', 'main', 'clan', 'ranked'].flatMap((t) => ['navcap_' + t, 'navring_' + t, 'navfill_' + t])];
-const BOOT_JSONS = { fx: 'fx/fx.json', font: 'fonts/bitmap.json', arena: 'arena/arena.json', chestMeta: 'chests/meta.json?v=3' };
+const BOOT_JSONS = { fx: 'fx/fx.json', font: 'fonts/bitmap.json', chestMeta: 'chests/meta.json?v=3' };
 
 const pending = {};
 function loadImage(src) {
@@ -41,11 +41,11 @@ export function json(key, path) {
 // Ce qu'il faut pour dessiner un animal en combat (hd : la grande planche de l'aperçu de la collection)
 // (?v=2 : les planches du Singe et du Bulldog ont changé de forme, l'ancienne copie gardée hors ligne ne doit pas servir)
 export const unitAssets = (id, hd) => { const k = hd ? id + '_hd' : id; return Promise.all([image(k, 'units/' + k + '.webp?v=3'), json(k, 'units/' + k + '.json?v=3')]); };
-// Le décor d'une arène : terrain, six structures et leurs ruines, barre du bas
-export function arenaAssets(n) {
-  const jobs = [image('field' + n, 'arena/field' + n + '.webp?v=3'), image('hud', 'arena/hud.webp'), image('shield', 'arena/shield.webp'), image('crownRed', 'arena/crown_red.webp'), image('crownBlue', 'arena/crown_blue.webp')];
-  for (const s of ['e_main', 'e_left', 'e_right', 'p_left', 'p_right', 'p_main']) jobs.push(image(`a${n}_${s}`, `arena/a${n}_${s}.webp`), image(`a${n}_${s}_ruin`, `arena/a${n}_${s}_ruin.webp`));
-  return Promise.all(jobs);
+// La grande arène : fond en haute définition, mini-carte, masque de l'eau (pour l'animer), éléments détourés (boîtes,
+// cages, tours, machine, tente), barre du bas, fond flouté autour de l'écran, et l'orang-outan qui garde les tours
+export function mapAssets(n) {
+  return Promise.all([image('map', 'map/map.webp?v=1'), image('mini', 'map/mini.webp?v=1'), image('water', 'map/water.png?v=1'), image('props', 'map/props.webp?v=1'),
+    image('hud', 'arena/hud.webp'), image('field' + n, 'arena/field' + n + '.webp?v=3'), unitAssets('orang')]);
 }
 // Planches haute définition (?v=3 : leur découpage a changé, l'ancienne copie gardée hors ligne ne doit pas servir)
 export const chestAssets = (tier) => image('sheet_' + tier, 'chests/' + tier + '.webp?v=3');

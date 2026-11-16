@@ -12,10 +12,16 @@ Des combats d'animaux en temps réel, à la manière de Clash Royale.
 1. Chaque combat dure 3 minutes. Tu as une main de 4 cartes tirées de ton deck de 8. Glisse une carte sur ton côté
    de l'arène pour poser l'animal : chaque carte coûte de l'**Aura** (la partie commence avec 5, la jauge se recharge
    toute seule, deux fois plus vite pendant la dernière minute).
-2. Les animaux foncent vers les structures adverses. Une tour cassée rapporte 1 couronne, la **structure principale**
-   en rapporte 3 et termine le combat. À égalité, prolongations : la première couronne gagne.
-3. **Siffler** rappelle tes animaux près de ton camp pour défendre. **Attaquer** : touche ensuite un endroit, une
-   structure ou un animal, et tes animaux se mettent à le viser.
+2. La grande arène défile sous le doigt (deux doigts ou la molette pour zoomer, la mini-carte pour y aller). Les
+   animaux posés dans ta **zone bleue** (en bas) rejoignent la **cible du centre** par les ponts. Chaque coup sur la
+   cible remplit ta jauge (bleue, à gauche) et vide d'autant celle de l'adversaire (rouge, à droite). Une jauge pleine
+   gagne tout de suite ; sinon, la plus remplie gagne au bout des 3 minutes (à égalité : mort subite d'une minute).
+3. Les **boîtes** cassées donnent un bonus à ton camp (un singe ou un chaton en renfort, des fruits qui soignent, une
+   rage qui augmente les dégâts, de l'Aura). Les deux **tours** latérales retiennent un orang-outan en cage : casse la
+   cage et il bombarde tes adversaires, et tu peux poser tes animaux à côté de sa tour. L'adversaire peut la reprendre.
+   Ordres : touche un de tes animaux puis sa cible (un animal, une boîte, une tour, la cible), ou glisse de l'animal
+   jusqu'à la cible ; **Attaquer** allume tout et donne l'ordre à toute la troupe ; **Siffler** les ramène se soigner
+   à la tente (un second coup les relâche).
 4. Les victoires classées rapportent des trophées et une **cage**. Une cage se range dans l'un des 4 emplacements de
    l'accueil, se débloque en un temps qui dépend de sa rareté (3 min à 24 h), puis s'ouvre. Les gemmes l'ouvrent tout
    de suite, les pattes font gagner 2 minutes chacune.
@@ -24,20 +30,20 @@ Des combats d'animaux en temps réel, à la manière de Clash Royale.
    les raretés : une cage plus précieuse rend seulement les cartes rares plus fréquentes.
 6. La boutique propose chaque jour trois offres de cartes payées en pièces (une commune, une rare, une épique) et les
    sept cages, payées en gemmes.
-7. Les trophées font monter d'arène (5 arènes, une tous les 300 trophées), chacune avec son décor et sa musique.
+7. Les trophées font monter d'arène (5 arènes, une tous les 300 trophées), chacune avec son ambiance et sa musique.
 
 | Animal | Rareté | Aura | Rôle |
 | --- | --- | --- | --- |
-| Chaton | Commune | 2 | Soigneur à distance, touche aussi les volants |
+| Chaton | Commune | 2 | Soigneur à distance, pose des boucliers sur ses alliés |
 | Singe | Commune | 3 | Deux singes rapides |
-| Bulldog | Commune | 4 | Tank qui attire les coups |
-| Cochon | Rare | 4 | Fonce sur les structures |
-| Orang-outan | Rare | 5 | Lance des rochers (dégâts de zone) |
-| Alligator | Épique | 5 | Broyeur, queue tournoyante |
-| Aigle | Épique | 4 | Volant, bourrasque qui repousse |
-| Gorille | Légendaire | 7 | Colosse, cri de guerre qui renforce les alliés |
-| Rhinocéros | Légendaire | 6 | Charge, carapace |
-| Éléphant | Ultime | 9 | Démolisseur de structures, trompe à eau |
+| Bulldog | Commune | 4 | Garde du corps qui attire les coups |
+| Cochon | Rare | 4 | Rot toxique : nuage qui empoisonne |
+| Orang-outan | Rare | 5 | Tank : intouchable quand il se protège la tête, lance des cailloux qui repoussent |
+| Alligator | Épique | 5 | Énormes dégâts, peu de points de vie |
+| Aigle | Épique | 4 | Volant, bourrasques qui repoussent |
+| Gorille | Légendaire | 7 | Colosse : chaque cri augmente ses dégâts |
+| Rhinocéros | Légendaire | 6 | Charge, carapace de métal de plus en plus solide |
+| Éléphant | Ultime | 9 | Puise dans les rivières et arrose : l'ennemi est ralenti |
 
 Les bruitages ont été créés avec [Soundza](https://soundza.com) (sons générés par IA).
 
@@ -84,8 +90,8 @@ l'ordinateur, et il reçoit le résultat à sa prochaine connexion.
 | --- | --- |
 | `index.html`, `styles/` | la page et sa mise en forme |
 | `src/data/` | tous les chiffres du jeu : animaux (`animals.js`), cartes, raretés, cages et boutique (`cards.js`), récompenses et arènes (`economy.js`), bots |
-| `src/game/` | le moteur de combat en temps réel (`rt.js`), l'adversaire joué par l'ordinateur (`ai.js`) et la progression du joueur |
-| `src/render/` | le dessin du combat (arène, animaux, effets, barre du bas) |
+| `src/game/` | le moteur de combat en temps réel (`rt.js`), les chemins par les ponts (`nav.js`), l'adversaire joué par l'ordinateur (`ai.js`) et la progression du joueur |
+| `src/render/` | le dessin du combat (caméra, arène vivante `mapfx.js`, animaux, effets, barre du bas) ; la carte et sa grille de marche sont dans `src/data/map.js` et `assets/map/` |
 | `src/ui/` | menus, boutique, collection, ouverture des cages (`chest.js`), fenêtres et déroulé d'un combat |
 | `src/online/` | le jeu en ligne |
 | `assets/` | images, sons et polices |

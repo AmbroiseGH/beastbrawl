@@ -6,7 +6,8 @@ const store = {};
 globalThis.location = { search: '' };
 globalThis.localStorage = { getItem: (k) => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } };
 
-const { createBattle, step, deploy, handOf, summary, TICK, DURATION, OVERTIME } = await import('../src/game/rt.js');
+const { createBattle, step, deploy, handOf, summary, command, damage, deployZones, TICK, TILE, DURATION, OVERTIME, BASE } = await import('../src/game/rt.js');
+const { findPath, walkable, zoneAt, los } = await import('../src/game/nav.js');
 const { makeAI, aiStep } = await import('../src/game/ai.js');
 const { makeRng } = await import('../src/core/rng.js');
 const { ANIMAL_IDS, ANIMALS, MAX_LEVEL } = await import('../src/data/animals.js');
@@ -24,8 +25,9 @@ function play(seed, d0, d1, s0 = 0.5, s1 = 0.5) {
   let n = 0;
   while (!b.over && n < (DURATION + OVERTIME + 5) / TICK) {
     aiStep(b, a0, TICK); aiStep(b, a1, TICK); step(b); n++;
-    for (const e of b.events) if (e.type === 'tower_down' || e.type === 'end') log.push(e.type + ':' + e.side + ':' + (e.winner ?? '') + '@' + b.t.toFixed(2));
+    for (const e of b.events) if (e.type === 'tower_take' || e.type === 'crate_break' || e.type === 'end') log.push(e.type + ':' + e.side + ':' + (e.bonus || e.winner || '') + '@' + b.t.toFixed(2));
     b.events.length = 0;
+    if (n % 15 === 0) for (const u of b.units) if (!u.dead && !u.air && u.spawn <= 0) assert.ok(walkable(u.x, u.y), `${u.aid} hors du sol en ${Math.round(u.x)},${Math.round(u.y)}`);
   }
   return { b, log, s: summary(b, 0) };
 }
@@ -36,7 +38,9 @@ await test('un combat entre deux ordinateurs va jusqu\'au bout', () => {
     const { b, s } = play(1000 + i, deck.slice(0, 8), deck.slice(2, 10));
     assert.ok(b.over, 'le combat doit se terminer');
     assert.ok(s.crowns >= 0 && s.crowns <= 3 && s.lost >= 0 && s.lost <= 3);
+    assert.ok(s.gauge >= 0 && s.gauge <= 100 && s.foeGauge >= 0 && s.foeGauge <= 100);
     if (!s.draw) assert.equal(s.win, b.winner === 0);
+    if (b.why === 'time' || b.why === 'overtime') assert.ok(b.winner === 0 ? b.players[0].gauge > b.players[1].gauge : b.players[1].gauge > b.players[0].gauge, 'la jauge la plus remplie gagne');
   }
 });
 
@@ -47,25 +51,106 @@ await test('la même graine redonne exactement le même combat', () => {
   assert.equal(a.b.t, b.b.t);
 });
 
-await test('poser une carte coûte de l\'Aura et respecte la zone de pose', () => {
+await test('poser une carte coûte de l\'Aura et respecte la zone de pose (bleue, en bas)', () => {
   const b = createBattle({ decks: [[{ id: 'monkey', level: 1 }, { id: 'kitten', level: 1 }, { id: 'bulldog', level: 1 }, { id: 'pig', level: 1 }], [{ id: 'monkey', level: 1 }]], seed: 5 });
   const p = b.players[0], slot = handOf(b, 0).findIndex((c) => c && c.id === 'bulldog');
   assert.equal(p.aura, 5);
-  assert.equal(deploy(b, 0, slot, 400, 300), 'zone', 'pas de pose chez l\'adversaire');
-  assert.equal(deploy(b, 0, slot, 400, 1100), '');
+  assert.equal(deploy(b, 0, slot, 767, 230), 'zone', 'pas de pose chez l\'adversaire');
+  assert.equal(deploy(b, 0, slot, 767, 500), 'zone', 'pas de pose au centre');
+  assert.equal(deploy(b, 0, slot, 160, 470), 'zone', 'pas de pose près d\'une tour qu\'on ne tient pas');
+  assert.equal(deploy(b, 0, slot, 767, 790), '');
   assert.equal(p.aura, 1);
   const s2 = handOf(b, 0).findIndex((c) => c && c.cost > 1);
-  assert.equal(deploy(b, 0, s2, 400, 1100), 'aura');
+  assert.equal(deploy(b, 0, s2, 767, 790), 'aura');
   assert.equal(b.units.filter((u) => u.side === 0).length, 1);
 });
 
-await test('casser la structure principale termine le combat avec 3 couronnes', () => {
+await test('les animaux au sol vont d\'une tente à l\'autre par les ponts', () => {
+  for (const [x0, y0, x1, y1] of [[767, 800, 767, 190], [767, 800, 160, 520], [600, 780, 1372, 520], [767, 800, 505, 241]]) {
+    const pts = findPath(x0, y0, x1, y1);
+    assert.ok(pts && pts.length > 1);
+    let bridge = false, px = x0, py = y0;
+    for (const [x, y] of pts) {
+      assert.ok(los(px, py, x, y), 'le chemin passe par le sol');
+      for (let k = 1; k <= 24; k++) if (zoneAt(px + (x - px) * k / 24, py + (y - py) * k / 24) === 6) bridge = true;
+      px = x; py = y;
+    }
+    assert.ok(bridge, 'le chemin emprunte un pont');
+  }
+});
+
+await test('remplir sa jauge en frappant la cible termine le combat avec 3 étoiles', () => {
   const b = createBattle({ decks: [[{ id: 'pig', level: 1 }], [{ id: 'monkey', level: 1 }]], seed: 9 });
-  for (const t of b.towers) if (t.side === 1) t.hp = 1;
-  deploy(b, 0, 0, 470, 1000);
-  let n = 0; while (!b.over && n < 60 / TICK) { step(b); b.events.length = 0; n++; }
-  assert.ok(b.over); assert.equal(b.winner, 0);
+  b.players[0].gauge = 99; b.players[1].gauge = 40;
+  damage(b, b.machine, b.gaugeHp * 0.004, { side: 0, aid: 'pig' });
+  assert.ok(Math.abs(b.players[1].gauge - 39.6) < 1e-6, 'la jauge adverse descend d\'autant');
+  deploy(b, 0, 0, 767, 790);
+  let n = 0; while (!b.over && n < 90 / TICK) { step(b); b.events.length = 0; n++; }
+  assert.ok(b.over); assert.equal(b.winner, 0); assert.equal(b.why, 'full');
   assert.equal(summary(b, 0).crowns, 3);
+});
+
+await test('une boîte cassée donne un bonus au camp qui l\'a cassée', () => {
+  const seenB = new Set();
+  for (let seed = 1; seed < 60; seed++) {
+    const b = createBattle({ decks: [[{ id: 'monkey', level: 1 }], [{ id: 'monkey', level: 1 }]], seed });
+    const c = b.crates[0];
+    damage(b, c, c.hp + 5, { side: 0, aid: 'monkey', a: { mult: 1 } });
+    const e = b.events.find((x) => x.type === 'crate_break');
+    assert.ok(c.dead && e && e.side === 0); assert.equal(b.players[0].crates, 1);
+    seenB.add(e.bonus);
+    if (e.bonus === 'monkey' || e.bonus === 'kitten') assert.ok(b.units.some((u) => u.side === 0 && u.aid === e.bonus && u.gift));
+  }
+  for (const k of ['monkey', 'kitten', 'fruit', 'rage', 'aura']) assert.ok(seenB.has(k), 'bonus ' + k);
+});
+
+await test('une tour cassée passe au camp qui l\'a cassée : on peut poser à côté et son orang-outan tire', () => {
+  const b = createBattle({ decks: [[{ id: 'monkey', level: 1 }], [{ id: 'monkey', level: 1 }]], seed: 3 });
+  const t = b.towers[0];
+  damage(b, t, t.hp + 1, { side: 0, aid: 'monkey', a: { mult: 1 } });
+  assert.equal(t.side, 0); assert.ok(deployZones(b, 0).includes(3));
+  assert.ok(b.events.some((e) => e.type === 'tower_take' && e.side === 0));
+  b.events.length = 0;
+  assert.equal(deploy(b, 1, 0, 700, 250), '');
+  let shot = false, n = 0;
+  while (!shot && n < 20 / TICK) { step(b); shot = b.events.some((e) => e.type === 'shot' && e.side === 0); b.events.length = 0; n++; }
+  assert.ok(shot, 'l\'orang-outan de la tour lance des pierres sur l\'adversaire');
+});
+
+await test('un ordre d\'attaque envoie l\'animal sur sa cible, Siffler le ramène à la tente', () => {
+  const b = createBattle({ decks: [[{ id: 'bulldog', level: 1 }], [{ id: 'monkey', level: 1 }]], seed: 4 });
+  deploy(b, 0, 0, 767, 790);
+  const u = b.units[0], crate = b.crates.find((c) => c.y > 700 && c.x < 700);
+  assert.equal(command(b, 0, [u.id], { ref: crate.id }), 1);
+  let n = 0; while (crate.hp === crate.maxHp && n < 30 / TICK) { step(b); b.events.length = 0; n++; }
+  assert.ok(crate.hp < crate.maxHp || crate.dead, 'le bulldog frappe la boîte demandée');
+  command(b, 0, [u.id], { x: 767, y: 560 });
+  n = 0; while (Math.hypot(u.x - 767, u.y - 560) > 20 && n < 30 / TICK) { step(b); b.events.length = 0; n++; }
+  assert.ok(Math.hypot(u.x - 767, u.y - 560) <= 20, 'il va où on l\'envoie');
+  command(b, 0, [u.id], { home: true });
+  n = 0; while (Math.hypot(u.x - BASE[0].x, u.y - BASE[0].y) > 4 * TILE && n < 40 / TICK) { step(b); b.events.length = 0; n++; }
+  assert.ok(Math.hypot(u.x - BASE[0].x, u.y - BASE[0].y) <= 4 * TILE, 'il rentre à la tente');
+});
+
+await test('compétences : l\'orang-outan se protège la tête, le cochon empoisonne, l\'éléphant puise de l\'eau', () => {
+  const b = createBattle({ decks: [[{ id: 'orang', level: 1 }, { id: 'pig', level: 1 }, { id: 'elephant', level: 1 }], [{ id: 'monkey', level: 1 }]], seed: 8 });
+  b.players[0].aura = 10;
+  const slot = (id) => handOf(b, 0).findIndex((c) => c && c.id === id);
+  deploy(b, 0, slot('orang'), 767, 790);
+  const o = b.units[0]; o.spawn = 0;
+  damage(b, o, 50, { side: 1, aid: 'monkey' });
+  assert.ok(o.guardT > 0, 'il se protège dès qu\'on le frappe');
+  const hp = o.hp; damage(b, o, 500, { side: 1, aid: 'monkey' });
+  assert.equal(o.hp, hp, 'intouchable pendant qu\'il se protège');
+  b.clouds.push({ side: 1, x: o.x, y: o.y, r: 60, dps: 100, linger: 2, t: 3, acc: 0, T: 3 });
+  o.guardT = 0; o.guardCd = 99;
+  let n = 0; while (!o.poison && n < 2 / TICK) { step(b); b.events.length = 0; n++; }
+  assert.ok(o.poison, 'le nuage empoisonne');
+  b.players[0].aura = 10;
+  deploy(b, 0, slot('elephant'), 767, 790);
+  const el = b.units.find((u) => u.aid === 'elephant');
+  n = 0; while (el.water === 0 && n < 25 / TICK) { step(b); b.events.length = 0; n++; }
+  assert.ok(el.water > 0, 'l\'éléphant a puisé de l\'eau');
 });
 
 // ---------- cartes et cages ----------
