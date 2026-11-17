@@ -5,7 +5,7 @@
 //   - glisser une carte sur la zone bleue : l'animal y tombe (toucher une carte puis toucher la zone marche aussi) ;
 //   - glisser l'arène : elle défile ; deux doigts ou la molette : zoom ; toucher la mini-carte : la caméra y va ;
 //   - toucher un de ses animaux : il est choisi (les autres touchers en ajoutent ou en retirent), puis toucher un animal
-//     adverse, une boîte, une tour ou la cible du centre l'envoie l'attaquer ; toucher le sol l'y envoie et l'y poste ;
+//     adverse, une boîte, une tour, le camp adverse ou la cible du centre l'envoie l'attaquer ; toucher le sol l'y envoie et l'y poste ;
 //   - glisser depuis un de ses animaux jusqu'à une cible : même ordre, d'un seul geste ;
 //   - « Attaquer » : tout s'allume (nos animaux, les adversaires, les structures) et toute la troupe est choisie ;
 //   - « Siffler » : les animaux choisis (ou tous) rentrent se soigner à la tente ; un second coup les relâche.
@@ -17,7 +17,7 @@ import { CHESTS } from '../data/cards.js';
 import { ANIMALS } from '../data/animals.js';
 import { makeBot } from '../data/bots.js';
 import { arenaOf, ARENAS } from '../data/economy.js';
-import { createBattle, step, TICK, TILE, WS, deploy, command, canDeploy, clampDeploy, forfeit, summary, handOf, BONUS_FX } from '../game/rt.js';
+import { createBattle, step, TICK, TILE, WS, deploy, command, canDeploy, clampDeploy, forfeit, summary, handOf, BONUS_FX, CAMPS } from '../game/rt.js';
 import { makeAI, aiStep } from '../game/ai.js';
 import { newSeed } from '../core/rng.js';
 import { applyFight, deckLevels } from '../game/progress.js';
@@ -88,8 +88,8 @@ function enter(opp, mode, mine, arena) {
   if (!V) { V = new View($('cv')); onResize((v) => V.resize(v.scale)); bindPointer(); }
   V.resize(stageView.scale); V.reset(arena);
   const lv = (d) => clamp(Math.round(avgLevel(d)), 1, 11);
-  const b = createBattle({ decks: [mine, opp.deck], towerLevels: [lv(mine), lv(opp.deck)], seed: newSeed() });
-  B = { b, mode, opp, arena, acc: 0, ai: makeAI(1, opp.skill === undefined ? 0.5 : opp.skill), endShown: false, party: false, mile: [0, 0], sec: 99, tips: S.fights < 3 ? TIPS.slice() : [], thr: {}, intro: TEST ? 0 : 1.1 };
+  const b = createBattle({ decks: [mine, opp.deck], towerLevels: [lv(mine), lv(opp.deck)], seed: newSeed(), mode: S.settings.camps === false ? 'jauge' : 'camps' });
+  B = { b, mode, opp, arena, acc: 0, ai: makeAI(1, opp.skill === undefined ? 0.5 : opp.skill), endShown: false, party: false, mile: [0, 0], sec: 99, tips: tipsFor(b), thr: {}, intro: TEST ? 0 : 1.1 };
   Object.assign(U, { sel: -1, drag: null, mode: false, picked: new Set(), pickNew: true, aim: null, hover: 0, g: null, pinch: null, mini: false, fling: null, zoneT: 0 });
   U.pts.clear();
   say('Glisse une carte dans ta zone bleue', 6);
@@ -101,17 +101,26 @@ function enter(opp, mode, mine, arena) {
   V.cam.x = 767; V.cam.y = 512; V.cam.z = ZOOM.min; V.clampCam(V.cam);
   if (TEST) { V.cam.y = 640; V.cam.z = ZOOM.start; V.clampCam(V.cam); }
   V.banner('COMBAT !', { size: 150, tint: 'orange', life: 1.3, y: 700 }); play('fight_start'); play('horn', { at: 0.15, v: 0.7 });
+  if (b.camps) V.banner('Détruis le camp adverse !', { size: 44, tint: 'white', life: 1.9, y: 800, delay: 0.35 });
   V.shake = 10; V.mapfx.excite(1);
   lastT = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(loop);
 }
 async function quit() {
   if (!B || B.b.over) return;
   sfx.click();
-  if (await ask('Abandonner ?', 'Ton adversaire gagnera, jauge pleine.', 'Abandonner', 'Continuer')) { if (B && !B.b.over) forfeit(B.b, 0); }
+  if (await ask('Abandonner ?', B.b.camps ? 'Ton adversaire gagnera, comme si ton camp était détruit.' : 'Ton adversaire gagnera, jauge pleine.', 'Abandonner', 'Continuer')) { if (B && !B.b.over) forfeit(B.b, 0); }
 }
 // Astuces des premiers combats (temps de jeu, texte), montrées quand rien d'autre n'est affiché
 const TIPS = [[9, 'Fais glisser l\'arène pour la parcourir'], [18, 'Touche un de tes animaux, puis sa cible'], [30, 'Casse les boîtes : elles cachent des bonus'],
   [44, 'Prends les tours : l\'orang-outan libéré t\'aide'], [58, 'Frappe la cible du centre : ta jauge monte'], [75, 'Siffler : tes animaux rentrent se soigner']];
+// Mode camps (le 3e élément marque ce qui est nouveau : montré aussi aux joueurs qui connaissent déjà le jeu, deux combats)
+const TIPS_CAMPS = [[9, 'Fais glisser l\'arène pour la parcourir'], [15, 'Détruis le camp rouge, tout en haut, pour gagner', 1], [26, 'Touche un de tes animaux, puis sa cible'],
+  [36, 'Frappe la machine du centre : elle tire sur le camp adverse', 1], [50, 'Défends ton camp : son garde ne suffit pas toujours', 1],
+  [64, 'Les petits ponts des côtés contournent le centre', 1], [80, 'Prends les tours : l\'orang-outan libéré t\'aide'], [95, 'Siffler : tes animaux rentrent se soigner']];
+function tipsFor(b) {
+  if (!b.camps) return S.fights < 3 ? TIPS.slice() : [];
+  return S.fights < 3 ? TIPS_CAMPS.slice() : (S.campFights || 0) < 2 ? TIPS_CAMPS.filter((x) => x[2]) : [];
+}
 
 // ---------- doigt : cartes, caméra, ordres ----------
 const inRect = (p, [x, y, w, hh], m = 0) => p.x >= x - m && p.x <= x + w + m && p.y >= y - m && p.y <= y + hh + m;
@@ -135,10 +144,11 @@ function targetAt(w) {
   const u = unitAt(w, 1); if (u && u.spawn <= 0) return u;
   for (const c of b.crates) if (!c.dead && Math.hypot((w.x - c.x) / (c.rx + tol), (w.y - c.y + 14) / (c.ry + 20 + tol)) < 1) return c;
   for (const t of b.towers) if (t.side !== 0 && Math.abs(w.x - t.x) < 78 + tol && w.y > 280 - tol && w.y < 590) return t;
+  const cp = b.camps && b.camps[1]; if (cp && !cp.dead && Math.abs(w.x - cp.x) < 118 + tol && w.y > -20 && w.y < cp.y + 64 + tol) return cp;
   const m = b.machine; if (Math.abs(w.x - m.x) < 100 + tol && w.y > 392 - tol && w.y < 562 + tol) return m;
   return null;
 }
-const NAMES = { crate: 'la boîte', tower: 'la tour', machine: 'la cible' };
+const NAMES = { crate: 'la boîte', tower: 'la tour', machine: 'la cible', camp: 'le camp' };
 
 function tryDeploy(slot, x, y) {
   const b = B.b, card = handOf(b, 0)[slot]; if (!card) return false;
@@ -388,11 +398,12 @@ function onEvents(evs) {
         if (e.charge) { snd('hit_heavy2', e.x, e.y, 0.9); shake(e.x, e.y, 10); }
         break;
       case 'hit': {
-        if (e.kind === 'tower' || e.kind === 'crate') {
-          const y = e.y - (e.kind === 'tower' ? 40 : 6) + rand(-10, 10);
-          if (!e.splash && e.by) V.fx(SPARK[e.by] || 'burst_yellow', e.x + rand(-18, 18), y, { s0: 0.22, s1: 0.5, life: 0.25, rot: rand(-0.5, 0.5) });
+        if (e.kind === 'tower' || e.kind === 'crate' || e.kind === 'camp') {
+          const camp = e.kind === 'camp', y = e.y - (e.kind === 'tower' ? 40 : camp ? 14 : 6) + rand(-10, 10), sx = e.x + rand(camp ? -40 : -18, camp ? 40 : 18);
+          if (!e.splash && e.by) V.fx(SPARK[e.by] || 'burst_yellow', sx, y, { s0: 0.22, s1: 0.5, life: 0.25, rot: rand(-0.5, 0.5) });
           if (e.kind === 'crate') { if (!e.splash) { snd('hit', e.x, e.y, 0.5, { rate: rand(0.6, 0.75) }); V.burst('planks', e.x, e.y - 14, 1, { s: 0.1, sp0: 80, sp1: 200, up: 160, g: 900 }); } }
-          else if (!e.splash) { snd('tower_hit', e.x, e.y, 0.55); if (Math.random() < 0.4) V.burst('rocks', e.x, y, 1, { s: 0.1, sp0: 80, sp1: 200, up: 160, g: 900 }); }
+          else if (!e.splash) { snd('tower_hit', e.x, e.y, 0.55); if (Math.random() < 0.4) V.burst(camp ? 'planks' : 'rocks', sx, y, 1, { s: 0.1, sp0: 80, sp1: 200, up: 160, g: 900 }); }
+          if (camp && e.side === 0 && !seen(e.x, e.y) && every('campHit', 4)) { V.ping(e.x, e.y, '#ff5a4a'); say('Ton camp est attaqué !', 1.8); }
           break;
         }
         const ent = b.ents.get(e.id), y = midY(e.id, e.x, e.y, e.air);
@@ -420,7 +431,7 @@ function onEvents(evs) {
         }
         V.mapfx.excite(0.25);
         const g = b.players[e.side].gauge, m = Math.min(3, Math.floor(g / 25));
-        if (m > B.mile[e.side]) {
+        if (!b.camps && m > B.mile[e.side]) {
           B.mile[e.side] = m;
           V.banner((e.side === 0 ? 'TA JAUGE : ' : 'JAUGE ROUGE : ') + m * 25 + ' %', { size: 78, tint: e.side === 0 ? 'blue' : 'red', life: 1.4, y: 560 });
           play(e.side === 0 ? 'surge' : 'horn', { v: 0.5 }); V.mapfx.excite(1);
@@ -428,12 +439,40 @@ function onEvents(evs) {
         break;
       }
       case 'shot': { const v = V.svis.get(e.tid); if (v) v.throwT = 0; snd('whoosh', e.x, e.y, 0.4, { rate: 0.7 }); break; }
+      case 'catapult': {      // mode camps : la charge est pleine, la machine du centre lance un rocher sur le camp adverse
+        const ours = e.side === 0;
+        snd('slam', e.x, e.y, 0.8); snd('whoosh', e.x, e.y, 0.9, { rate: 0.55, at: 0.05 });
+        V.fx('dust_ring', 767, 530, { s0: 0.4, s1: 1.3, life: 0.5, flat: 0.55, a: 0.8 });
+        V.burst('star_big', e.x, e.y, 8, { s: 0.18, sp0: 120, sp1: 300, up: 120, g: 400, add: true });
+        shake(e.x, e.y, 10); V.mapfx.excite(1);
+        V.banner(ours ? 'CATAPULTE !' : 'CATAPULTE ROUGE !', { size: ours ? 92 : 70, tint: ours ? 'blue' : 'red', life: 1.3, y: 560 });
+        V.ping(e.tx, e.ty, ours ? '#5ac8ff' : '#ff5a4a');
+        break;
+      }
+      case 'camp_down': {     // un camp est détruit : fin du combat
+        const mx = e.x, my = e.side === 0 ? 900 : 60;
+        snd('tower_down', e.x, e.y, 1); snd('slam', e.x, e.y, 0.9, { at: 0.1 }); play('crown', { at: 0.4, v: 0.8 });
+        V.fx('explosion2', mx, my, { s0: 0.5, s1: 1.6, life: 0.8 }); V.fx('explosion1', mx - 60, my + 10, { s0: 0.3, s1: 1, life: 0.6, delay: 0.1 }); V.fx('explosion1', mx + 60, my - 5, { s0: 0.3, s1: 1, life: 0.6, delay: 0.2 });
+        V.burst('planks', mx, my, 12, { s: 0.22, sp0: 200, sp1: 520, up: 300, g: 1000 }); V.burst('rocks', mx, my, 10, { s: 0.18, sp0: 180, sp1: 480, up: 280, g: 1000 });
+        V.burst('star_big', mx, my - 20, 16, { s: 0.22, sp0: 200, sp1: 520, up: 200, g: 500, add: true });
+        shake(e.x, e.y, 26); V.flash = 0.4; V.flashColor = e.side === 1 ? '150,210,255' : '255,110,90'; V.mapfx.excite(2);
+        break;
+      }
       case 'proj':
         if (e.key === 'rocks2') snd('whoosh', e.x, e.y, 0.4, { rate: 0.8 });
         else if (e.key === 'gust') snd('tornado', e.x, e.y, 0.35, { rate: 1.3 });
         break;
       case 'land':
-        if (e.key === 'rocks2') {
+        if (e.cata) {        // le rocher de la catapulte s'écrase sur le camp
+          const ours = e.side === 0;
+          snd('tower_down', e.x, e.y, 0.9); snd('rock', e.x, e.y, 0.9, { at: 0.04 });
+          V.fx('explosion2', e.x, e.y - 20, { s0: 0.35, s1: 1.1, life: 0.6 });
+          V.burst('rocks', e.x, e.y - 10, 8, { s: 0.18, sp0: 160, sp1: 420, up: 260, g: 1000 }); V.burst('planks', e.x, e.y - 10, 6, { s: 0.16, sp0: 140, sp1: 380, up: 240, g: 1000 });
+          V.fx('dust_ring', e.x, e.y + 6, { s0: 0.4, s1: 1.6, life: 0.55, flat: 0.5, a: 0.9 }); V.decal('crater2', e.x, e.y + 10, 6, 0.7);
+          shake(e.x, e.y, 18); if (seen(e.x, e.y)) { V.flash = 0.25; V.flashColor = ours ? '150,210,255' : '255,110,90'; }
+          V.text('-' + Math.round(CAMPS.catapult.hit * 100) + ' %', e.x, e.y - 60, { size: 40, tint: ours ? 'yellow' : 'red', life: 1.3, pop: 1.4 });
+          V.mapfx.excite(1.2);
+        } else if (e.key === 'rocks2') {
           const big = e.tower ? 1.25 : 1;
           snd('rock', e.x, e.y, 0.8); V.fx('burst_rocks', e.x, e.y - 8, { s0: 0.25, s1: 0.62 * big, life: 0.3 });
           V.burst('rocks', e.x, e.y - 6, e.tower ? 6 : 4, { s: 0.12, sp0: 120, sp1: 260, up: 160, g: 900 }); V.decal('crater1', e.x, e.y + 3, 4, 0.32 * big); shake(e.x, e.y, e.tower ? 7 : 4);
@@ -549,7 +588,7 @@ function onEvents(evs) {
       }
       case 'double': V.banner('AURA x2 !', { size: 120, tint: 'pink', life: 1.8, y: 680 }); play('surge'); V.mapfx.excite(1); break;
       case 'overtime':
-        V.banner('MORT SUBITE !', { size: 104, tint: 'orange', life: 2.2, y: 650 }); V.banner('Le prochain coup sur la cible gagne', { size: 42, tint: 'white', life: 2.2, y: 750, delay: 0.3 });
+        V.banner('MORT SUBITE !', { size: 104, tint: 'orange', life: 2.2, y: 650 }); V.banner(b.camps ? 'Le premier camp touché perd' : 'Le prochain coup sur la cible gagne', { size: 42, tint: 'white', life: 2.2, y: 750, delay: 0.3 });
         play('overtime'); V.mapfx.excite(1.6);
         break;
       case 'order':
@@ -611,11 +650,13 @@ function loop(now) {
       B.party = true; U.sel = -1; U.drag = null; setMode(false); U.hint = '';
       const win = b.winner === 0, draw = b.winner === -1;
       music(null);
-      V.lookAt(767, 600, ZOOM.start);       // tout le monde regarde les jauges
+      if (b.why === 'camp') V.lookAt(767, win ? 240 : 790, ZOOM.start);      // le camp qui vient de tomber
+      else V.lookAt(767, 600, ZOOM.start);       // tout le monde regarde les jauges
       if (b.why === 'full') V.banner(win ? 'JAUGE PLEINE !' : 'JAUGE ROUGE PLEINE', { size: 90, tint: win ? 'blue' : 'red', life: 1.2, y: 560 });
+      if (b.why === 'camp') V.banner(win ? 'CAMP DÉTRUIT !' : 'TON CAMP EST TOMBÉ', { size: 90, tint: win ? 'blue' : 'red', life: 1.2, y: 560 });
       if (win) { sfx.win(); for (let i = 0; i < 4; i++) V.burst('confetti', rand(150, 790), rand(250, 500), 10, { s: 0.5, sp0: 120, sp1: 420, up: 300, g: 420, life: 2.2, delay: i * 0.12, top: true }); V.burst('star_big', 470, 700, 14, { s: 0.4, sp0: 200, sp1: 520, up: 200, life: 1.6, top: true }); }
       else if (!draw) sfx.lose(); else play('overtime', { v: 0.6 });
-      V.banner(win ? 'VICTOIRE !' : draw ? 'ÉGALITÉ' : 'DÉFAITE', { size: 140, tint: win ? 'yellow' : draw ? 'white' : 'red', life: 2.4, y: 700, delay: b.why === 'full' ? 0.5 : 0 });
+      V.banner(win ? 'VICTOIRE !' : draw ? 'ÉGALITÉ' : 'DÉFAITE', { size: 140, tint: win ? 'yellow' : draw ? 'white' : 'red', life: 2.4, y: 700, delay: b.why === 'full' || b.why === 'camp' ? 0.5 : 0 });
       V.mapfx.excite(1.6);
     }
     if (b.endT > (TEST ? 0.3 : 2.8)) { B.endShown = true; finish(); }
@@ -625,12 +666,13 @@ function loop(now) {
 // ---------- fin du combat ----------
 function finish() {
   const b = B.b, ranked = B.mode === 'ranked', res = summary(b, 0);
+  if (b.camps) S.campFights = (S.campFights || 0) + 1;      // pour les astuces du mode camps (voir tipsFor)
   const out = applyFight(res, B.opp, ranked);
   if (B.opp.uid) Net.report(B.opp.uid, res.win, !ranked);
   Net.pushProfile();
   showEnd(res, out, ranked);
 }
-const WHY = { full: 'Jauge remplie !', time: 'Fin du temps', overtime: 'Mort subite', tie: 'Égalité : départage aux tours, puis aux K.-O.', forfeit: 'Abandon' };
+const WHY = { full: 'Jauge remplie !', camp: 'Camp détruit !', time: 'Fin du temps', overtime: 'Mort subite', tie: 'Égalité : départage aux tours, puis aux K.-O.', forfeit: 'Abandon' };
 function showEnd(res, out, ranked) {
   const r = out.rewards, win = res.win;
   const POS = win ? { coin: 262, xp: 443, ruby: 620, btn: 442 } : { coin: 245, xp: 426, ruby: 603, btn: 428 };
@@ -643,8 +685,10 @@ function showEnd(res, out, ranked) {
   if (r.paws) lines.push(`+${r.paws}<i class="ico paw"></i>`);
   // pourcentages entiers, sauf si les deux jauges ont le même entier (on montre alors la décimale qui les départage)
   const same = Math.floor(res.gauge) === Math.floor(res.foeGauge) && res.gauge !== res.foeGauge, pc = (g) => (same ? String(g.toFixed(1)).replace('.', ',') : Math.floor(g)) + ' %';
-  const extra = [`Jauges : <span class="blue">${pc(res.gauge)}</span> contre <span class="bad">${pc(res.foeGauge)}</span> · ${WHY[res.why] || ''}`];
+  // mode camps : gauge = part du camp adverse détruite, foeGauge = part du nôtre
+  const extra = [`${res.mode === 'camps' ? 'Camps détruits à' : 'Jauges :'} <span class="blue">${pc(res.gauge)}</span> contre <span class="bad">${pc(res.foeGauge)}</span> · ${WHY[res.why] || ''}`];
   const bits = [];
+  if (res.shots) bits.push(res.shots > 1 ? res.shots + ' tirs de catapulte' : '1 tir de catapulte');
   if (res.towers) bits.push(res.towers > 1 ? res.towers + ' tours tenues' : '1 tour tenue');
   if (res.crates) bits.push(res.crates > 1 ? res.crates + ' boîtes cassées' : '1 boîte cassée');
   if (res.kos) bits.push(res.kos + ' K.-O.');
@@ -653,7 +697,8 @@ function showEnd(res, out, ranked) {
   if (r.streakBonus) extra.push(`Série de ${out.streak} victoires : +${fmt(r.streakBonus)}<i class="ico coin"></i>`);
   if (out.firstWin) extra.push('Première victoire du jour : +5<i class="ico ruby"></i>');
   if (out.full) extra.push('<span class="bad">Tes 4 emplacements de cages sont pleins !</span>');
-  if (!win && !res.draw) extra.push(S.lossRun >= 2 ? 'Astuce : améliore tes animaux dans la Collection.' : res.towers === 0 ? 'Astuce : prends une tour, son orang-outan t\'aidera !' : 'Astuce : frappe la cible du centre pour remplir ta jauge !');
+  if (!win && !res.draw) extra.push(S.lossRun >= 2 ? 'Astuce : améliore tes animaux dans la Collection.' : res.towers === 0 ? 'Astuce : prends une tour, son orang-outan t\'aidera !'
+    : res.mode === 'camps' ? (res.shots ? 'Astuce : passe par un flanc pour surprendre le camp adverse !' : 'Astuce : frappe la machine du centre, elle tire sur le camp adverse !') : 'Astuce : frappe la cible du centre pour remplir ta jauge !');
   const chestEl = out.chest ? h('div', { class: 'end-chest' }, h('img', { src: `assets/chests/icon_${out.chest.tier}.webp`, alt: '' }), h('div', { class: 't sm' }, CHESTS[out.chest.tier].name + ' gagnée !')) : null;
   const el = h('div', { class: 'veil end' }, h('div', { class: 'end-top t', html: lines.join('   ') }), panel, chestEl, h('div', { class: 'end-extra t xs', html: extra.join('<br>') }));
   $('modals').append(el);

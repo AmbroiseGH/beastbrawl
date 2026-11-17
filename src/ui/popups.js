@@ -85,7 +85,8 @@ export function statsPopup() {
 // ---------- paramètres ----------
 export function settingsPopup() {
   const tog = (label, key) => { const sw = h('div', { class: 'switch' + (S.settings[key] ? ' on' : '') }); return h('button', { class: 'card toggle t sm', style: { width: '100%' }, onclick: () => { S.settings[key] = !S.settings[key]; sw.classList.toggle('on', S.settings[key]); changed(); if (key === 'music') music('menu'); sfx.click(); } }, label, sw); };
-  const m = modal({ title: 'Paramètres', body: [tog('Bruitages', 'sfx'), tog('Musique', 'music'),
+  const m = modal({ title: 'Paramètres', body: [tog('Bruitages', 'sfx'), tog('Musique', 'music'), tog('Camps à détruire', 'camps'),
+    p('Désactivé : l\'ancien mode, avec la jauge du centre', 'small'),
     h('div', { class: 'row' },
       h('button', { class: 'btn blue small t sm', onclick: () => { sfx.click(); m.close(); howTo(); } }, 'Comment jouer'),
       h('button', { class: 'btn purple small t sm', onclick: async () => { sfx.click(); const v = await prompt('Ton pseudo', '', S.name, 14); if (v) { S.name = v; changed(); Net.pushProfile(); } } }, 'Changer de pseudo'),
@@ -95,8 +96,10 @@ export function settingsPopup() {
 export function howTo() {
   modal({ title: 'Comment jouer', color: 'purple', body: [
     p('1. Le combat dure 3 minutes. Glisse une de tes 4 cartes sur ton côté de l\'arène pour poser l\'animal. Chaque carte coûte de l\'<span style="color:#ff8af0">Aura</span>, qui se recharge toute seule.'),
-    p('2. Tes animaux foncent vers les tours adverses. Une tour cassée = 1 couronne. Casse la <span style="color:var(--gold)">structure principale</span> pour gagner tout de suite !'),
-    p('3. <b>Siffler</b> rappelle tes animaux pour défendre ton camp. <b>Attaquer</b> : touche ensuite un endroit, une tour ou un animal, et tes animaux foncent dessus.'),
+    S.settings.camps === false
+      ? p('2. Frappe la <span style="color:var(--gold)">cible du centre</span> : ta jauge monte et celle de l\'adversaire baisse. Jauge pleine = victoire ; sinon, la jauge la plus haute gagne à la fin.')
+      : p('2. Tes animaux foncent vers le camp adverse. <b>Détruis-le pour gagner tout de suite</b> ; sinon, le camp le moins abîmé gagne à la fin. Frappe la <span style="color:var(--gold)">machine du centre</span> : sa catapulte lance un rocher sur le camp adverse. Le camp le plus abîmé recharge son Aura plus vite.'),
+    p('3. <b>Siffler</b> rappelle tes animaux à ta tente pour se soigner. <b>Attaquer</b> : touche ensuite un endroit, une boîte, une tour, un animal ou une cible, et tes animaux foncent dessus. Les tours prises libèrent un orang-outan qui t\'aide.'),
     p('4. Les victoires rapportent des cages. Ouvre-les pour trouver de nouveaux animaux et des cartes pour les améliorer dans la Collection.', 'small')], buttons: [{ label: 'Compris !', color: 'green' }] });
 }
 

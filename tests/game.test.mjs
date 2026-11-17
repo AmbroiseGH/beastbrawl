@@ -90,6 +90,90 @@ await test('remplir sa jauge en frappant la cible termine le combat avec 3 étoi
   assert.equal(summary(b, 0).crowns, 3);
 });
 
+// ---------- mode camps ----------
+const campBattle = (seed = 5, d0 = ['monkey'], d1 = ['monkey']) => createBattle({ decks: [d0.map((id) => ({ id, level: 1 })), d1.map((id) => ({ id, level: 1 }))], seed, mode: 'camps' });
+const run = (b, sec, fn) => { let n = 0; while (!b.over && n < sec / TICK) { step(b); if (fn) for (const e of b.events) fn(e); b.events.length = 0; n++; } };
+
+await test('mode camps : un combat entre deux ordinateurs va jusqu\'au bout, la catapulte tire et les camps encaissent', () => {
+  let shots = 0, hurt = 0;
+  for (let i = 0; i < 6; i++) {
+    const deck = [...ANIMAL_IDS].sort(() => makeRng(40 + i)() - 0.5).slice(0, 8);
+    const b = campBattle(2000 + i, deck, deck), a0 = makeAI(0, 0.5, makeRng(77 + i)), a1 = makeAI(1, 0.6, makeRng(177 + i));
+    let n = 0;
+    while (!b.over && n < (DURATION + OVERTIME + 5) / TICK) {
+      aiStep(b, a0, TICK); aiStep(b, a1, TICK); step(b); n++;
+      for (const e of b.events) if (e.type === 'catapult') shots++;
+      b.events.length = 0;
+      if (n % 15 === 0) for (const u of b.units) if (!u.dead && !u.air && u.spawn <= 0) assert.ok(walkable(u.x, u.y), `${u.aid} hors du sol en ${Math.round(u.x)},${Math.round(u.y)}`);
+    }
+    assert.ok(b.over, 'le combat doit se terminer');
+    assert.ok(['camp', 'time', 'overtime', 'tie'].includes(b.why), b.why);
+    if (b.camps.some((c) => c.hp < c.maxHp)) hurt++;
+    const s = summary(b, 0);
+    assert.equal(s.mode, 'camps'); assert.ok(s.crowns >= 0 && s.crowns <= 3 && s.gauge >= 0 && s.gauge <= 100);
+  }
+  assert.ok(shots > 0, 'au moins un tir de catapulte'); assert.ok(hurt >= 4, 'les camps sont attaqués');
+});
+
+await test('mode camps : sans ordre ni ennemi en vue, un animal marche vers le camp adverse', () => {
+  const b = campBattle(6);
+  deploy(b, 0, 0, 767, 790);
+  run(b, 2);
+  const u = b.units.find((x) => x.side === 0);
+  assert.equal(u.target, b.camps[1].id);
+});
+
+await test('mode camps : le garde lance des pierres sur l\'ennemi qui approche du camp, jamais sur les siens', () => {
+  const b = campBattle(7);
+  deploy(b, 0, 0, 700, 800); deploy(b, 1, 0, 767, 230);
+  const mine = b.units.find((x) => x.side === 0), foe = b.units.find((x) => x.side === 1);
+  foe.x = 767; foe.y = 760; foe.order = { x: 767, y: 760 };           // notre singe est plus près du camp que l'ennemi
+  const targets = [];
+  run(b, 3, (e) => { if (e.type === 'shot' && e.camp) { assert.equal(e.side, 0); targets.push(b.camps[0].target); } });
+  assert.ok(targets.length >= 1, 'le garde tire');
+  for (const t of targets) assert.equal(t, foe.id);
+  assert.ok(foe.hp < foe.maxHp, 'l\'ennemi est touché'); assert.notEqual(b.camps[0].target, mine.id);
+});
+
+await test('mode camps : la machine charge la catapulte de chaque camp, un tir enlève 12 % du camp adverse, le camp mené charge plus vite', () => {
+  const b = campBattle(8), c1 = b.camps[1], info = { side: 0, aid: 'monkey', a: { mult: 1 } };
+  damage(b, b.machine, b.gaugeHp * 0.5, info);
+  assert.ok(Math.abs(b.players[0].gauge - 50) < 1e-6); assert.equal(b.players[1].gauge, 0, 'charges indépendantes');
+  damage(b, b.machine, b.gaugeHp * 0.5, info);
+  assert.ok(b.events.some((e) => e.type === 'catapult' && e.side === 0)); assert.equal(b.players[0].gauge, 0, 'la charge repart de zéro');
+  assert.ok(b.projs.some((p) => p.key === 'boulder' && p.target === c1.id));
+  run(b, 2);
+  assert.equal(c1.hp, Math.round(c1.maxHp * 0.88));
+  b.camps[0].hp = Math.round(b.camps[0].maxHp * 0.7);         // 18 points de retard : la charge va 2,2 fois plus vite
+  damage(b, b.machine, b.gaugeHp * 0.1, info);
+  assert.ok(Math.abs(b.players[0].gauge - 22) < 0.05, String(b.players[0].gauge));
+});
+
+await test('mode camps : le camp mené recharge son Aura plus vite', () => {
+  const b = campBattle(9);
+  b.camps[0].hp = Math.round(b.camps[0].maxHp * 0.6);          // 40 points de retard : +50 %
+  b.players[0].aura = 0; b.players[1].aura = 0;
+  run(b, 3);
+  assert.ok(Math.abs(b.players[0].aura / b.players[1].aura - 1.5) < 0.01, String(b.players[0].aura / b.players[1].aura));
+});
+
+await test('mode camps : camp détruit = victoire à 3 étoiles ; au temps, le camp le moins abîmé gagne ; en mort subite, le premier camp touché perd', () => {
+  let b = campBattle(10);
+  damage(b, b.camps[1], b.camps[1].hp + 10, { side: 0, aid: 'monkey', a: { mult: 1 } });
+  assert.ok(b.over && b.camps[1].dead); assert.equal(b.winner, 0); assert.equal(b.why, 'camp');
+  let s = summary(b, 0); assert.equal(s.crowns, 3); assert.equal(s.gauge, 100); assert.equal(s.lost, 0);
+  b = campBattle(11);
+  b.camps[1].hp = Math.round(b.camps[1].maxHp * 0.45); b.camps[0].hp = Math.round(b.camps[0].maxHp * 0.8); b.clock = 0.01;
+  run(b, 0.1);
+  assert.ok(b.over); assert.equal(b.winner, 0); assert.equal(b.why, 'time');
+  s = summary(b, 0); assert.equal(s.crowns, 2); assert.equal(s.lost, 0); assert.equal(summary(b, 1).crowns, 0);
+  b = campBattle(12); b.clock = 0.01;
+  run(b, 0.1);
+  assert.ok(b.overtime && !b.over, 'égalité : mort subite');
+  damage(b, b.camps[0], 1, { side: 1, aid: 'monkey', a: { mult: 1 } });
+  assert.ok(b.over); assert.equal(b.winner, 1); assert.equal(b.why, 'overtime');
+});
+
 await test('une boîte cassée donne un bonus au camp qui l\'a cassée', () => {
   const seenB = new Set();
   for (let seed = 1; seed < 60; seed++) {

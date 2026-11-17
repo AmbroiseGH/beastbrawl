@@ -1,7 +1,7 @@
 // Affichage du combat sur un canvas : la grande arène vue de près par une caméra que le joueur fait défiler, les
-// structures (cible et jauges, tours, boîtes), les animaux animés, projectiles, effets, et l'habillage (jauges, mini-carte,
-// barre du bas : Aura, cartes, Siffler, Attaquer). Ne décide de rien : il dessine l'état du moteur (src/game/rt.js) et
-// ce que battle.js lui passe.
+// structures (cible et jauges, tours, boîtes, camps et leurs gardes), les animaux animés, projectiles, effets, et l'habillage
+// (jauges ou vie des camps, mini-carte, barre du bas : Aura, cartes, Siffler, Attaquer). Ne décide de rien : il dessine
+// l'état du moteur (src/game/rt.js) et ce que battle.js lui passe.
 import { IMG, DATA } from '../core/assets.js';
 import { clamp, rand } from '../core/utils.js';
 import { handOf, nextOf, deployZones, DEPLOY_DELAY, TILE, WS } from '../game/rt.js';
@@ -129,6 +129,11 @@ const ellipse = (c, x, y, rx, ry) => { c.beginPath(); c.ellipse(x, y, rx, ry, 0,
 const TEAM = ['#39a9ff', '#ff5a4a'], TEAM_LITE = ['#bfe6ff', '#ffd0c4'];
 const AMBIENT = [null, '#fff0dc', '#e4f6dc', null, '#dbe9ff', '#ffd9cb'];      // teinte de l'air selon l'arène
 const JARS = [[716, 431, 44, 56], [775, 431, 44, 56]];                         // verre des deux bocaux : bleu à gauche, rouge à droite
+// Mode camps : où se tient le garde de chaque camp (sur le toit de la tente bleue, sur le tapis devant la tente rouge),
+// le milieu de chaque tente (fumée, flammes) et la hauteur de la barre de vie
+const GUARD = [{ x: 767, y: 852 }, { x: 767, y: 126 }], TENT_MID = [{ x: 767, y: 905 }, { x: 767, y: 92 }], CAMP_BAR = [968, 58];
+const campPct = (cp) => Math.ceil(100 * Math.max(0, cp.hp) / cp.maxHp - 1e-6);       // vie d'un camp en %, arrondie vers le haut (1 % tant qu'il tient)
+const ROCK = [[0, 1], [0.8, 0.86], [1.5, 1.04], [2.3, 0.9], [3.1, 1], [3.9, 0.84], [4.7, 1.02], [5.5, 0.9]];      // contour du rocher (angle, rayon)
 
 export class View {
   constructor(canvas) {
@@ -136,7 +141,7 @@ export class View {
     this.parts = []; this.texts = []; this.decals = []; this.dots = []; this.vis = new Map(); this.svis = new Map();
     this.shake = 0; this.time = 0; this.flash = 0; this.flashColor = '255,255,255'; this.banners = [];
     this.hand = [{}, {}, {}, {}]; this.auraN = -1; this.mapfx = new MapFx(); this.zoneCv = {};
-    this.cam = { x: 767, y: 512, z: ZOOM.min }; this.camT = null; this.gv = [0, 0]; this.gpulse = [0, 0]; this.pings = [];
+    this.cam = { x: 767, y: 512, z: ZOOM.min }; this.camT = null; this.gv = [0, 0]; this.gpulse = [0, 0]; this.cpulse = [0, 0]; this.chp = null; this.pings = [];
   }
   resize(scale) {
     const k = clamp(scale * (window.devicePixelRatio || 1), 0.5, 1.35);
@@ -145,7 +150,7 @@ export class View {
   }
   reset(arena) {
     this.parts.length = 0; this.texts.length = 0; this.decals.length = 0; this.dots.length = 0; this.vis.clear(); this.svis.clear(); this.shake = 0; this.flash = 0; this.banners.length = 0;
-    this.arena = arena; this.hand = [{}, {}, {}, {}]; this.auraN = -1; this.mapfx.reset(); this.gv = [0, 0]; this.gpulse = [0, 0];
+    this.arena = arena; this.hand = [{}, {}, {}, {}]; this.auraN = -1; this.mapfx.reset(); this.gv = [0, 0]; this.gpulse = [0, 0]; this.cpulse = [0, 0]; this.chp = null;
     this.cam = { x: 767, y: 512, z: ZOOM.min }; this.camT = null; this.pings = [];
   }
   // signal sur la mini-carte (tour prise, boîte cassée, animal tombé hors de l'écran)
@@ -256,8 +261,9 @@ export class View {
     for (const s of b.crates) list.push({ y: s.y + 16, s });
     for (const t of b.towers) list.push({ y: 566, s: t });
     list.push({ y: 541, s: b.machine }, { y: 2000, tent: 1 });
+    if (b.camps) for (const cp of b.camps) list.push({ y: cp.side === 0 ? 2001 : GUARD[1].y, guard: cp });      // le garde bleu est sur le toit de sa tente
     list.sort((p, q) => p.y - q.y);
-    for (const it of list) { if (it.u) this.drawUnit(it.u, dt, a, b, ui); else if (it.tent) this.prop('tentB'); else this.drawStruct(it.s, dt, b, ui); }
+    for (const it of list) { if (it.u) this.drawUnit(it.u, dt, a, b, ui); else if (it.tent) this.prop('tentB'); else if (it.guard) this.drawCamp(it.guard, dt, b); else this.drawStruct(it.s, dt, b, ui); }
     for (const s of b.structs) this.drawStructBar(s, b, ui);
     for (const it of list) if (it.u) this.drawUnitBar(it.u, ui);
     for (const p of b.projs) this.drawProj(p);
@@ -352,8 +358,8 @@ export class View {
     if (mode) {
       // tout ce qu'on peut viser s'allume : la cible, les tours qui ne sont pas à nous, les boîtes, les animaux adverses
       for (const s of b.structs) {
-        if (s.dead || (s.kind === 'tower' && s.side === 0)) continue;
-        this.ring(s.x, s.y + (s.kind === 'crate' ? 6 : s.kind === 'tower' ? 96 : 40), s.rx * (s.kind === 'tower' ? 0.9 : 1.05) + 3 * pulse, (s.kind === 'tower' ? 26 : s.ry * 0.9) + 2 * pulse, `rgba(255,214,60,${0.65 + 0.3 * pulse})`, 3.2, [9, 6], t * 1.2);
+        if (s.dead || ((s.kind === 'tower' || s.kind === 'camp') && s.side === 0)) continue;
+        this.ring(s.x, s.y + (s.kind === 'crate' ? 6 : s.kind === 'tower' ? 96 : s.kind === 'camp' ? 30 : 40), s.rx * (s.kind === 'tower' ? 0.9 : 1.05) + 3 * pulse, (s.kind === 'tower' ? 26 : s.ry * 0.9) + 2 * pulse, `rgba(255,214,60,${0.65 + 0.3 * pulse})`, 3.2, [9, 6], t * 1.2);
       }
       for (const u of b.units) {
         if (u.dead || u.spawn > 0) continue;
@@ -485,8 +491,43 @@ export class View {
       c.restore();
     }
   }
+  // Mode camps : la tente encaisse (éclat sous les coups, fumée sous la moitié de sa vie, flammes sous le quart) et son
+  // garde, un orang-outan, lance des pierres sur les ennemis qui approchent
+  drawCamp(cp, dt, b) {
+    const c = this.ctx, s = cp.side; let v = this.svis.get(cp.id);
+    if (!v) { v = { hp: cp.hp, flash: 0, throwT: 9, dir: s === 0 ? 'N' : 'S', smoke: 0 }; this.svis.set(cp.id, v); }
+    if (cp.hp < v.hp) v.flash = 1;
+    v.hp = cp.hp; v.flash = Math.max(0, v.flash - dt * 5); v.throwT += dt;
+    if (s === 0 && v.flash > 0.02) this.prop('tentB', 0, 0, v.flash * 0.4, 1, true);
+    const r = Math.max(0, cp.hp) / cp.maxHp, M = TENT_MID[s];
+    if (r < 0.5) {
+      v.smoke -= dt;
+      if (v.smoke <= 0) {
+        v.smoke = cp.dead ? 0.07 : r < 0.25 ? 0.16 : 0.32;
+        this.fx(Math.random() < 0.5 ? 'smoke1' : 'smoke2', M.x + rand(-70, 70), M.y + rand(-20, 10), { s0: 0.18, s1: 0.55, life: 1.5, vy: -45, vx: rand(-10, 10), a: 0.65, fade: 0.7 });
+        if (r < 0.25) this.fx('fire2', M.x + rand(-70, 70), M.y + rand(-10, 20), { s0: 0.2, s1: 0.48, life: 0.8, vy: -30, a: 0.95 });
+      }
+    }
+    if (cp.dead) return;
+    const G = GUARD[s], tg = cp.target ? b.ents.get(cp.target) : null;
+    if (tg && v.throwT < 0.9) { const dx = tg.x - G.x, dy = tg.y - G.y; v.dir = Math.abs(dx) > Math.abs(dy) * 1.1 ? (dx > 0 ? 'E' : 'W') : (dy > 0 ? 'S' : 'N'); }
+    else if (v.throwT > 2.5) v.dir = s === 0 ? 'N' : 'S';
+    const thr = v.throwT < 0.62, anim = (thr ? 'atk2_' : 'walk_') + v.dir, n = animLen('orang', anim), fr = thr ? Math.min(n - 1, Math.floor((0.38 + v.throwT / 0.62 * 0.62) * n)) : 0;
+    c.fillStyle = TEAM[s]; c.globalAlpha = 0.55; ellipse(c, G.x, G.y, 30, 7); c.fill(); c.globalAlpha = 1;
+    drawUnitFrame(c, 'orang', anim, fr, G.x, G.y - Math.abs(Math.sin(this.time * 2.2 + s)) * 1.2, WS * 1.12);
+  }
+  drawCampBar(s) {
+    const y = CAMP_BAR[s.side]; if (!this.onScreen(s.x, y, 140)) return;
+    const c = this.ctx, w = 128, hh = 11, x = s.x - w / 2, r = Math.max(0, s.hp) / s.maxHp, col = s.side === 0 ? ['#8fe0ff', '#1f8fe6'] : ['#ff9a84', '#d92a20'];
+    c.fillStyle = 'rgba(16,10,8,.92)'; rr(c, x - 2, y - 2, w + 4, hh + 4, 4.5); c.fill();
+    c.fillStyle = '#3b2e2c'; rr(c, x, y, w, hh, 3); c.fill();
+    const g = c.createLinearGradient(0, y, 0, y + hh); g.addColorStop(0, col[0]); g.addColorStop(1, col[1]);
+    c.fillStyle = g; rr(c, x, y, Math.max(3, w * r), hh, 3); c.fill();
+    label(c, (s.side === 0 ? 'Ton camp · ' : 'Camp adverse · ') + campPct(s) + ' %', s.x, y - 11, 13, TEAM_LITE[s.side], 'center', 0.3);
+  }
   drawStructBar(s, b, ui) {
     if (s.kind === 'machine' || s.dead) return;
+    if (s.kind === 'camp') { this.drawCampBar(s); return; }
     const r = s.hp / s.maxHp;
     if (s.kind === 'crate' && r >= 1) return;
     if (!this.onScreen(s.x, s.y, 120)) return;
@@ -636,8 +677,22 @@ export class View {
     if (pips) for (let i = 0; i < pips[0]; i++) { c.fillStyle = '#140c08'; c.beginPath(); c.arc(x + 5 + i * 10, y + hh + 8, 4.6, 0, 6.3); c.fill(); c.fillStyle = pips[1]; c.beginPath(); c.arc(x + 5 + i * 10, y + hh + 8, 3.2, 0, 6.3); c.fill(); }
     c.restore();
   }
+  // Le rocher de la catapulte (mode camps) : il tourne en l'air, son ombre file au sol jusqu'au camp visé
+  drawBoulder(p) {
+    const c = this.ctx, k = p.k || 0, gx = p.sx + (p.tx - p.sx) * k, gy = p.sy + 100 + (p.ty - p.sy - 100) * k, up = Math.sin(Math.PI * k);
+    c.fillStyle = `rgba(0,0,0,${0.16 + 0.22 * (1 - up)})`; ellipse(c, gx, gy, 14 + 10 * (1 - up), 5 + 4 * (1 - up)); c.fill();
+    const R = 16 + 13 * up;          // plus gros en haut de sa course : il passe près de la caméra
+    c.save(); c.translate(p.x, p.y); c.rotate(this.time * 7);
+    c.beginPath(); ROCK.forEach(([an, q], i) => { const x = Math.cos(an) * R * q, y = Math.sin(an) * R * q; if (i) c.lineTo(x, y); else c.moveTo(x, y); }); c.closePath();
+    const g = c.createRadialGradient(-R * 0.3, -R * 0.35, 2, 0, 0, R * 1.1); g.addColorStop(0, '#ecd0a8'); g.addColorStop(0.55, '#a87a50'); g.addColorStop(1, '#5a3a24');
+    c.fillStyle = g; c.fill(); c.lineWidth = 3; c.strokeStyle = '#2a1608'; c.lineJoin = 'round'; c.stroke();
+    c.fillStyle = 'rgba(255,255,255,.32)'; ellipse(c, -R * 0.3, -R * 0.38, R * 0.28, R * 0.16); c.fill();
+    c.restore();
+    if (Math.random() < 0.6) this.fx('smoke_puff', p.x + rand(-6, 6), p.y + rand(-6, 6), { s0: 0.1, s1: 0.26, life: 0.5, a: 0.55 });
+  }
   drawProj(p) {
     const c = this.ctx;
+    if (p.key === 'boulder') { this.drawBoulder(p); return; }
     if (p.arc) { const gy = p.sy + (p.ty - p.sy) * (p.k || 0) + (p.info.tower ? (1 - (p.k || 0)) * 150 : 18); c.fillStyle = 'rgba(0,0,0,.25)'; ellipse(c, p.x, gy, 7.5, 3.2); c.fill(); }
     if (p.key === 'gust') {      // bourrasque : croissants d'air qui filent
       const an = p.ang !== undefined ? p.ang : Math.atan2(p.ty - p.y, p.tx - p.x);
@@ -680,11 +735,17 @@ export class View {
     c.fillStyle = 'rgba(20,12,30,.74)'; rr(c, W - 176, 10, 164, 66, 16); c.fill();
     label(c, b.overtime ? 'Mort subite' : 'Temps restant', W - 94, 26, 17, b.overtime ? '#ff9a7a' : '#e8dccb');
     label(c, mm + ':' + ss, W - 94, 54, 36 * (hot ? 1 + 0.06 * Math.sin(this.time * 10) : 1), hot ? '#ff6a5a' : '#fff');
-    // jauges : la bleue se remplit depuis la gauche, la rouge depuis la droite, la cible au milieu
+    // jauges : la bleue se remplit depuis la gauche, la rouge depuis la droite, la cible au milieu ;
+    // en mode camps, la vie des deux camps à la place (elles se vident vers les bords)
     const [gx, gy, gw, gh] = HUD.gauge, mid = gx + gw / 2, bx0 = gx + 62, bw = mid - 36 - bx0, by = gy + 14, bh = gh - 28;
+    const val = (s) => (b.camps ? 100 * Math.max(0, b.camps[s].hp) / b.camps[s].maxHp : b.players[s].gauge);
+    if (b.camps) {
+      if (!this.chp) this.chp = b.camps.map((cp) => cp.hp);
+      for (let s = 0; s < 2; s++) { if (b.camps[s].hp < this.chp[s]) this.cpulse[s] = 1; this.chp[s] = b.camps[s].hp; this.cpulse[s] = Math.max(0, this.cpulse[s] - dt * 2.5); }
+    }
     c.fillStyle = 'rgba(20,12,30,.8)'; rr(c, gx, gy, gw, gh, 20); c.fill();
     for (let s = 0; s < 2; s++) {
-      const g = b.players[s].gauge / 100, x = s === 0 ? bx0 : mid + 36, lead = b.players[s].gauge > b.players[1 - s].gauge + 0.01;
+      const vs = val(s), g = vs / 100, x = s === 0 ? bx0 : mid + 36, lead = vs > val(1 - s) + 0.01, pulse = b.camps ? this.cpulse[s] : this.gpulse[s];
       c.fillStyle = '#0c0814'; rr(c, x - 4, by - 4, bw + 8, bh + 8, 14); c.fill();
       c.fillStyle = s === 0 ? '#14284a' : '#4a1614'; rr(c, x, by, bw, bh, 10); c.fill();
       if (g > 0.002) {
@@ -692,9 +753,10 @@ export class View {
         if (s === 0) { gr.addColorStop(0, '#a6e8ff'); gr.addColorStop(0.45, '#2fa8ff'); gr.addColorStop(1, '#1663c8'); } else { gr.addColorStop(0, '#ffb8a4'); gr.addColorStop(0.45, '#ff4a3a'); gr.addColorStop(1, '#b81e1a'); }
         c.fillStyle = gr; rr(c, fx0, by, fw, bh, 10); c.fill();
         c.fillStyle = 'rgba(255,255,255,.4)'; rr(c, fx0 + 5, by + 4, Math.max(0, fw - 10), 6, 3); c.fill();
-        if (this.gpulse[s] > 0.02) { c.globalCompositeOperation = 'lighter'; c.fillStyle = `rgba(255,255,255,${0.45 * this.gpulse[s]})`; rr(c, fx0, by, fw, bh, 10); c.fill(); c.globalCompositeOperation = 'source-over'; }
+        if (pulse > 0.02) { c.globalCompositeOperation = 'lighter'; c.fillStyle = `rgba(255,255,255,${0.45 * pulse})`; rr(c, fx0, by, fw, bh, 10); c.fill(); c.globalCompositeOperation = 'source-over'; }
       }
-      label(c, Math.floor(b.players[s].gauge) + ' %', s === 0 ? x + 14 : x + bw - 14, by + bh / 2 + 1, lead ? 27 : 23, lead ? '#fff' : '#d9d2e6', s === 0 ? 'left' : 'right', 0.24);
+      label(c, (b.camps ? campPct(b.camps[s]) : Math.floor(vs)) + ' %', s === 0 ? x + 14 : x + bw - 14, by + bh / 2 + 1, lead ? 27 : 23, lead ? '#fff' : '#d9d2e6', s === 0 ? 'left' : 'right', 0.24);
+      if (b.camps) label(c, s === 0 ? 'Ton camp' : 'Camp adverse', s === 0 ? x + bw - 12 : x + 12, by + bh / 2 + 1, 17, 'rgba(255,255,255,.82)', s === 0 ? 'right' : 'left', 0.22);
       // la tour de ce côté de l'arène : grise tant qu'elle est en cage, puis à la couleur de celui qui la tient
       const tw = b.towers[s], tx = s === 0 ? gx + 32 : gx + gw - 32, col = tw.side < 0 ? '#8a8496' : TEAM[tw.side];
       c.fillStyle = '#0c0814'; c.beginPath(); c.arc(tx, gy + gh / 2, 23, 0, 6.3); c.fill();
@@ -716,6 +778,7 @@ export class View {
     for (const s of b.crates) if (!s.dead) { c.fillStyle = '#2a1608'; c.fillRect(x + s.x * k - 4.5, y + s.y * k - 4.5, 9, 9); c.fillStyle = '#ffb648'; c.fillRect(x + s.x * k - 3, y + s.y * k - 3, 6, 6); }
     for (const t of b.towers) { c.fillStyle = '#0c0814'; c.beginPath(); c.arc(x + t.x * k, y + (t.y - 40) * k, 9, 0, 6.3); c.fill(); c.fillStyle = t.side < 0 ? '#c9c2d6' : TEAM[t.side]; c.beginPath(); c.arc(x + t.x * k, y + (t.y - 40) * k, 6.5, 0, 6.3); c.fill(); }
     for (const [r2, col] of [[7, '#fff'], [4.5, '#ff3b30'], [2, '#fff']]) { c.fillStyle = col; c.beginPath(); c.arc(x + 767 * k, y + 505 * k, r2, 0, 6.3); c.fill(); }
+    if (b.camps) for (const cp of b.camps) { const cx = x + cp.x * k, cy = y + (cp.side === 0 ? 124 : 14), r = Math.max(0, cp.hp) / cp.maxHp; c.fillStyle = '#0c0814'; rr(c, cx - 19, cy - 5, 38, 10, 4); c.fill(); c.fillStyle = TEAM[cp.side]; if (r > 0) { rr(c, cx - 17, cy - 3, 34 * r, 6, 3); c.fill(); } }
     for (const u of b.units) { if (u.dead) continue; c.fillStyle = '#0c0814'; c.beginPath(); c.arc(x + u.x * k, y + u.y * k, 5, 0, 6.3); c.fill(); c.fillStyle = ui.picked.has(u.id) ? '#fff27a' : TEAM[u.side]; c.beginPath(); c.arc(x + u.x * k, y + u.y * k, 3.4, 0, 6.3); c.fill(); }
     for (let i = this.pings.length - 1; i >= 0; i--) {
       const p = this.pings[i]; p.age += 1 / 60; if (p.age > 1.6) { this.pings.splice(i, 1); continue; }

@@ -1,6 +1,9 @@
 // Le moteur des combats en temps réel sur la grande arène : deux camps (0 = bleu, en bas ; 1 = rouge, en haut), de
-// l'Aura qui se recharge, des animaux posés depuis une main de 4 cartes. Trois objectifs :
-//   - la cible du centre : la frapper remplit sa jauge et vide celle de l'adversaire (jauge pleine = victoire) ;
+// l'Aura qui se recharge, des animaux posés depuis une main de 4 cartes. Deux façons de gagner (b.mode) :
+//   - « camps » : détruire le camp adverse (la tente, gardée par un lanceur de pierres) ; la machine du centre est une
+//     catapulte : la frapper charge un tir sur le camp adverse ; le camp le plus abîmé recharge plus vite son Aura ;
+//   - « jauge » (l'ancien mode) : frapper la cible du centre remplit sa jauge et vide celle de l'adversaire.
+// Dans les deux modes :
 //   - les deux tours latérales : casser la cage libère un orang-outan qui bombarde les animaux adverses ;
 //   - les boîtes : les casser donne un bonus tiré au sort (allié en plus, fruits, rage, Aura).
 // Pas de dessin ici : le moteur avance par pas fixes et range dans b.events ce qui s'est passé, pour que l'affichage
@@ -25,6 +28,24 @@ const REGEN = { r: 4.5, rate: 0.06, calm: 2 };  // près de sa tente, un animal 
 const HOLD_LEASH = 2.6;                         // un animal posté ne poursuit pas plus loin (cases)
 const BONUS = [['monkey', 22], ['kitten', 18], ['fruit', 25], ['rage', 25], ['aura', 10]];
 export const BONUS_FX = { fruitR: 4, fruit: 0.35, rageR: 4, rage: { dmg: 0.5, speed: 0.3, dur: 8 }, aura: 2 };
+// Mode « camps » (réglages venus des simulations de l'audit du 17/11/2026)
+export const CAMPS = {
+  hp: 4000,                                                          // vie d'un camp (fois le niveau des decks)
+  guard: { dmg: 120, hitEvery: 1.5, range: 5.5, splash: 0.9, splashMult: 0.5, knock: 0.15 },   // le garde lance des pierres sur qui approche
+  catapult: { fill: 4000, hit: 0.12, catchup: 15 },                 // dégâts sur la machine pour une charge ; part de la vie du camp adverse par tir ;
+                                                                     // retard (points) qui fait charger deux fois plus vite
+  aura: 80,                                                          // retard (points) qui fait recharger l'Aura deux fois plus vite (+50 % à mi-chemin)
+};
+// centre du camp (ellipse rx 110, ry 40), point visé par les coups, hauteur d'où le garde lance (voir GUARD dans src/render/view.js)
+export const CAMP_POS = [{ x: 767, y: 868, aimY: 846, topY: 812 }, { x: 767, y: 88, aimY: 112, topY: 92 }];
+// Retard d'un camp, en points : part de vie perdue par son camp moins celle du camp adverse (0 s'il mène)
+export function behind(b, side) {
+  if (!b.camps) return 0;
+  const m = b.camps[side], f = b.camps[1 - side];
+  return Math.max(0, 100 * (f.hp / f.maxHp - m.hp / m.maxHp));
+}
+// But d'un animal sans ordre ni ennemi en vue : le camp adverse, ou la cible du centre dans l'ancien mode
+const goal = (b, u) => (b.camps ? b.camps[1 - u.side] : b.machine);
 
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 // distance de bord à bord entre un animal et une cible (les structures sont des ellipses)
@@ -35,11 +56,12 @@ function edge(u, e) {
 const ev = (b, e) => b.events.push(e);
 
 // ---------- création ----------
-// decks : [[{ id, level }…], […]] ; towerLevels : niveau moyen de chaque deck ; seed : graine du combat
-export function createBattle({ decks, towerLevels = [1, 1], seed = 1 }) {
+// decks : [[{ id, level }…], […]] ; towerLevels : niveau moyen de chaque deck ; seed : graine du combat ;
+// mode : 'camps' (détruire le camp adverse) ou 'jauge' (l'ancien mode de la jauge du centre)
+export function createBattle({ decks, towerLevels = [1, 1], seed = 1, mode = 'jauge' }) {
   const rng = makeRng(seed);
   const lv = [towerLevels[0] || 1, towerLevels[1] || 1], lvK = (levelK(lv[0]) + levelK(lv[1])) / 2;
-  const b = { t: 0, clock: DURATION, overtime: false, double: false, over: false, winner: -1, endT: 0, why: '',
+  const b = { t: 0, clock: DURATION, overtime: false, double: false, over: false, winner: -1, endT: 0, why: '', mode: mode === 'camps' ? 'camps' : 'jauge', camps: null,
     units: [], structs: [], towers: [], crates: [], machine: null, projs: [], clouds: [], events: [], ents: new Map(), nextId: 1, rng, players: [],
     levels: lv, lvK, gaugeHp: STRUCTS.gauge.hp * lvK };
   for (let s = 0; s < 2; s++) {
@@ -54,6 +76,10 @@ export function createBattle({ decks, towerLevels = [1, 1], seed = 1 }) {
   for (const lane of ['L', 'R']) {
     const P = TOWER_POS[lane], hp = Math.round(STRUCTS.tower.hp * lvK);
     b.towers.push(add({ kind: 'tower', lane, side: -1, x: P.x, y: P.y, rx: 85, ry: 128, aimX: P.x, aimY: P.y - 20, topY: P.topY, hp, maxHp: hp, taken: 0, cd: 0, shotT: 9, target: 0 }));
+  }
+  if (b.mode === 'camps') {
+    b.camps = [0, 1].map((s) => { const P = CAMP_POS[s], hp = Math.round(CAMPS.hp * lvK); return add({ kind: 'camp', side: s, x: P.x, y: P.y, rx: 110, ry: 40, aimX: P.x, aimY: P.aimY, topY: P.topY, hp, maxHp: hp, cd: 0, target: 0 }); });
+    b.gaugeHp = CAMPS.catapult.fill * lvK;          // les jauges deviennent la charge de chaque catapulte
   }
   CRATES.forEach(([x, y], i) => {
     const hp = Math.round(STRUCTS.crate.hp * lvK);
@@ -95,7 +121,7 @@ export function deploy(b, side, slot, x, y) {
   const made = spawn(b, side, card.id, card.level, x, y);
   // posé au pied d'une boîte ou d'une tour à prendre : il s'en occupe d'abord
   let near = null, nd = 3.5 * TILE;
-  for (const s of b.structs) { if (s.dead || s.kind === 'machine' || (s.kind === 'tower' && s.side === side)) continue; const d = edge({ x, y, r: 0 }, s); if (d < nd) { nd = d; near = s; } }
+  for (const s of b.structs) { if (s.dead || s.kind === 'machine' || ((s.kind === 'tower' || s.kind === 'camp') && s.side === side)) continue; const d = edge({ x, y, r: 0 }, s); if (d < nd) { nd = d; near = s; } }
   if (near) for (const u of made) u.order = { ref: near.id, auto: true };
   ev(b, { type: 'deploy', side, id: card.id, x, y, cost: card.cost, ids: made.map((u) => u.id) });
   return '';
@@ -149,9 +175,14 @@ export function step(b) {
   if (b.over) { b.endT += dt; for (const u of b.units) { if (u.dead) u.deadT += dt; u.px = u.x; u.py = u.y; u.moving = false; if (u.atk) { u.atkT += dt; if (u.atkT >= u.atk.dur) u.atk = null; } } advanceProjs(b, dt, true); return; }
   b.clock -= dt;
   if (!b.overtime && !b.double && b.clock <= DOUBLE_AT) { b.double = true; ev(b, { type: 'double' }); }
-  for (const p of b.players) p.aura = Math.min(AURA.max, p.aura + dt / (AURA.every / (b.double || b.overtime ? 2 : 1)));
+  for (const p of b.players) {
+    // mode camps : le camp le plus abîmé recharge plus vite (+50 % à CAMPS.aura / 2 points de retard, le double à CAMPS.aura)
+    const k = b.camps ? 1 + Math.min(1, behind(b, p.side) / CAMPS.aura) : 1;
+    p.aura = Math.min(AURA.max, p.aura + k * dt / (AURA.every / (b.double || b.overtime ? 2 : 1)));
+  }
   for (const u of b.units) { u.px = u.x; u.py = u.y; if (u.dead) { u.deadT += dt; continue; } updateUnit(b, u, dt); if (b.over) return; }
   for (const t of b.towers) updateTower(b, t, dt);
+  if (b.camps) for (const c of b.camps) updateCamp(b, c, dt);
   for (const c of b.crates) if (c.dead) { c.respawnT -= dt; if (c.respawnT <= 0 && !b.units.some((u) => !u.dead && !u.air && Math.hypot((u.x - c.x) / (c.rx + u.r), (u.y - c.y) / (c.ry + u.r)) < 1)) { c.dead = false; c.hp = c.maxHp; ev(b, { type: 'crate_spawn', id: c.id, x: c.x, y: c.y }); } }
   advanceProjs(b, dt, false);
   if (b.over) return;
@@ -159,8 +190,9 @@ export function step(b) {
   separate(b);
   if (b.units.some((u) => u.dead && u.deadT > 1)) b.units = b.units.filter((u) => { if (u.dead && u.deadT > 1) { b.ents.delete(u.id); return false; } return true; });
   if (b.clock <= 0 && !b.over) {
-    const [g0, g1] = [b.players[0].gauge, b.players[1].gauge];
-    if (Math.abs(g0 - g1) > 1e-6) end(b, g0 > g1 ? 0 : 1, b.overtime ? 'overtime' : 'time');
+    // le mode camps compare la vie des camps (en part de leur vie), l'ancien mode les jauges
+    const [g0, g1] = b.camps ? [b.camps[0].hp / b.camps[0].maxHp * 100, b.camps[1].hp / b.camps[1].maxHp * 100] : [b.players[0].gauge, b.players[1].gauge];
+    if (Math.abs(g0 - g1) > (b.camps ? 0.5 : 1e-6)) end(b, g0 > g1 ? 0 : 1, b.overtime ? 'overtime' : 'time');
     else if (!b.overtime) { b.overtime = true; b.clock = OVERTIME; ev(b, { type: 'overtime' }); }
     else {    // toujours à égalité : les tours tenues, puis les K.-O., départagent
       const own = (s) => b.towers.filter((t) => t.side === s).length, d = own(0) - own(1) || b.players[0].kos - b.players[1].kos;
@@ -168,8 +200,12 @@ export function step(b) {
     }
   }
 }
-// Abandon : l'adversaire gagne, jauge pleine
-export function forfeit(b, side) { if (b.over) return; b.players[1 - side].gauge = 100; b.players[side].gauge = 0; end(b, 1 - side, 'forfeit'); }
+// Abandon : l'adversaire gagne, jauge pleine (ou camp détruit)
+export function forfeit(b, side) {
+  if (b.over) return;
+  if (b.camps) b.camps[side].hp = 0; else { b.players[1 - side].gauge = 100; b.players[side].gauge = 0; }
+  end(b, 1 - side, 'forfeit');
+}
 function end(b, winner, why) {
   if (b.over) return;
   b.over = true; b.winner = winner; b.endT = 0; b.why = why;
@@ -181,7 +217,7 @@ function end(b, winner, why) {
 function canHit(u, e) {
   if (!e || e.dead) return false;
   if (e.kind === 'unit') return e.side !== u.side && (!e.air || u.s.targets === 'all');
-  if (e.kind === 'tower') return e.side !== u.side;
+  if (e.kind === 'tower' || e.kind === 'camp') return e.side !== u.side;
   return true;                                   // la cible du centre et les boîtes : tout le monde peut les frapper
 }
 const aimX = (e) => (e.aimX !== undefined ? e.aimX : e.x), aimY = (e) => (e.aimY !== undefined ? e.aimY : e.y);
@@ -274,8 +310,8 @@ function updateUnit(b, u, dt) {
     }
     if (!u.healing) {
       const keep = tgt && tgt.kind === 'unit' && inRange(tgt);
-      if (!keep && tick) tgt = acquire(b, u, !!holdAt) || (holdAt ? null : b.machine);
-      else if (!tgt && !holdAt) tgt = b.machine;
+      if (!keep && tick) tgt = acquire(b, u, !!holdAt) || (holdAt ? null : goal(b, u));
+      else if (!tgt && !holdAt) tgt = goal(b, u);
     }
   }
   u.target = tgt ? tgt.id : 0;
@@ -341,7 +377,7 @@ function impact(b, info, tgt, x, y) {
       damage(b, e, info.dmg * a.splashMult, info, true); hitList.push(e);
     }
     if (!info.tower) for (const s of b.structs) {
-      if (s === tgt || s.dead || (s.kind === 'tower' && s.side === info.side)) continue;
+      if (s === tgt || s.dead || ((s.kind === 'tower' || s.kind === 'camp') && s.side === info.side)) continue;
       if ((Math.hypot((s.x - cx) / s.rx, (s.y - cy) / s.ry) - 1) * Math.min(s.rx, s.ry) < R) { damage(b, s, info.dmg * a.splashMult * 0.5, info, true); if (b.over) return; }
     }
     ev(b, { type: 'splash', id: info.aid, x: cx, y: cy, r: R, water: !!a.water, gust: !!a.gust, tower: !!info.tower, special: !!A && a === A.attacks.special });
@@ -370,6 +406,13 @@ function heal(b, e, amount) {
 }
 export function damage(b, e, amount, info, splash = false) {
   if (e.dead || b.over) return;
+  if (e.kind === 'machine' && b.camps) {        // mode camps : la catapulte. Chaque camp charge la sienne, le camp en retard plus vite
+    const p = b.players[info.side], g = amount / b.gaugeHp * 100 * (1 + behind(b, info.side) / CAMPS.catapult.catchup);
+    p.gauge = Math.min(100, p.gauge + g);
+    ev(b, { type: 'gauge', side: info.side, g, amount: Math.round(amount), x: e.aimX, y: e.aimY, by: info.aid, splash });
+    if (p.gauge >= 100) fireCatapult(b, info.side);
+    return;
+  }
   if (e.kind === 'machine') {                   // la cible : la jauge du camp qui frappe monte, l'autre descend d'autant
     const p = b.players[info.side], q = b.players[1 - info.side], g = amount / b.gaugeHp * 100;
     p.gauge = Math.min(100, p.gauge + g); q.gauge = Math.max(0, q.gauge - g);
@@ -392,6 +435,7 @@ export function damage(b, e, amount, info, splash = false) {
   if (e.kind === 'unit') e.hurtT = 0;
   ev(b, { type: 'hit', id: e.id, kind: e.kind, amount, x: aimX(e), y: aimY(e), by: info ? info.aid : null, splash, air: !!e.air, side: e.side, charge: info && info.charge, dot: !!(info && info.dot), from: info ? info.side : -1 });
   if (e.hp <= 0) { kill(b, e, info); return; }
+  if (e.kind === 'camp' && b.overtime) { end(b, 1 - e.side, 'overtime'); return; }      // mort subite : le premier camp touché perd
   // l'orang-outan se protège la tête dès qu'on le frappe
   const g = e.kind === 'unit' && e.s.attacks.special && e.s.attacks.special.guard;
   if (g && e.guardCd <= 0 && e.stun <= 0 && e.spawn <= 0 && !(info && info.dot)) {
@@ -402,6 +446,7 @@ export function damage(b, e, amount, info, splash = false) {
 function kill(b, e, info) {
   e.hp = 0;
   const by = info ? info.side : -1;
+  if (e.kind === 'camp') { e.dead = true; ev(b, { type: 'camp_down', side: e.side, x: e.x, y: e.y, topY: e.topY }); end(b, 1 - e.side, 'camp'); return; }
   if (e.kind === 'unit') { e.dead = true; e.deadT = 0; e.atk = null; b.players[1 - e.side].kos++; ev(b, { type: 'death', uid: e.id, id: e.aid, side: e.side, x: e.x, y: e.y, air: e.air }); return; }
   if (e.kind === 'crate') {                    // la boîte éclate : un bonus tiré au sort pour le camp qui l'a cassée
     e.dead = true; e.respawnT = STRUCTS.crate.respawn;
@@ -472,12 +517,13 @@ function updateTower(b, t, dt) {
   if (t.side < 0) return;
   t.cd -= dt; if (t.cd > 0) return;
   const T = STRUCTS.tower, R = T.range * TILE;
-  // d'abord ceux qui s'en prennent à la tour, sinon l'ennemi le plus proche de la cible du centre
+  // d'abord ceux qui s'en prennent à la tour, sinon l'ennemi le plus proche de notre camp (de la cible du centre dans l'ancien mode)
   let tgt = null, bs = Infinity;
+  const G = b.camps ? b.camps[t.side] : b.machine;
   for (const u of b.units) {
     if (u.dead || u.side === t.side || u.spawn > 0) continue;
     const d = Math.hypot(u.x - t.x, u.y - t.y); if (d > R) continue;
-    const sc = d < 7 * TILE ? d - 2000 : Math.hypot(u.x - b.machine.x, u.y - b.machine.y);
+    const sc = d < 7 * TILE ? d - 2000 : Math.hypot(u.x - G.x, u.y - G.y);
     if (sc < bs) { bs = sc; tgt = u; }
   }
   if (!tgt) { t.cd = 0.3; return; }
@@ -487,6 +533,36 @@ function updateTower(b, t, dt) {
     info: { side: t.side, aid: null, tower: true, a: { mult: 1, splash: T.splash, splashMult: T.splashMult, knock: T.knock }, dmg, src: t.id, sx: t.x, sy: t.y } };
   pr.T = Math.max(0.7, Math.min(1.5, Math.hypot(pr.tx - pr.x, pr.ty - pr.y) / (15 * TILE)));
   b.projs.push(pr); ev(b, { type: 'shot', tid: t.id, side: t.side, x: pr.x, y: pr.y, tx: pr.tx, ty: pr.ty });
+}
+
+// ---------- mode camps : le garde du camp lance des pierres sur qui approche ----------
+function updateCamp(b, c, dt) {
+  if (c.dead) return;
+  c.cd -= dt; if (c.cd > 0) return;
+  const T = CAMPS.guard, R = T.range * TILE;
+  let tgt = null, bs = Infinity;
+  for (const u of b.units) {
+    if (u.dead || u.side === c.side || u.spawn > 0) continue;
+    const d = edge(u, c); if (d > R) continue;
+    if (d < bs) { bs = d; tgt = u; }
+  }
+  if (!tgt) { c.cd = 0.3; c.target = 0; return; }
+  c.cd = T.hitEvery; c.target = tgt.id;
+  const dmg = Math.round(T.dmg * levelK(b.levels[c.side]));
+  const pr = { side: c.side, x: c.x, y: c.topY, sx: c.x, sy: c.topY, tx: tgt.x, ty: tgt.y, target: tgt.id, key: 'rocks2', arc: true, arcH: 80, track: true, t: 0,
+    info: { side: c.side, aid: null, tower: true, a: { mult: 1, splash: T.splash, splashMult: T.splashMult, knock: T.knock }, dmg, src: c.id, sx: c.x, sy: c.y } };
+  pr.T = Math.max(0.5, Math.min(1.2, Math.hypot(pr.tx - pr.x, pr.ty - pr.y) / (15 * TILE)));
+  b.projs.push(pr); ev(b, { type: 'shot', tid: c.id, side: c.side, x: pr.x, y: pr.y, tx: pr.tx, ty: pr.ty, camp: true });
+}
+// Charge pleine : la catapulte du centre lance un gros rocher sur le camp adverse, et la charge repart de zéro
+function fireCatapult(b, side) {
+  const p = b.players[side], c = b.camps[1 - side], M = b.machine, dmg = c.maxHp * CAMPS.catapult.hit;
+  p.gauge = 0; p.shots = (p.shots || 0) + 1;
+  const sx = M.x + (side === 0 ? -29 : 30), sy = M.y - 70;          // il part du bocal du camp qui tire
+  const pr = { side, x: sx, y: sy, sx, sy, tx: c.aimX, ty: c.aimY, target: c.id, key: 'boulder', arc: true, arcH: 120, track: false, t: 0, T: 1.4,
+    info: { side, aid: null, catapult: true, a: { mult: 1 }, dmg, src: M.id, sx: M.x, sy: M.y } };
+  b.projs.push(pr);
+  ev(b, { type: 'catapult', side, x: sx, y: sy, tx: c.aimX, ty: c.aimY, amount: Math.round(dmg), T: pr.T });
 }
 
 // ---------- projectiles et nuages ----------
@@ -508,7 +584,7 @@ function advanceProjs(b, dt, frozen) {
 }
 function land(b, p, tg) {
   const live = tg && !tg.dead;
-  ev(b, { type: 'land', key: p.key, x: p.tx, y: p.ty, splash: !!p.info.a.splash, tower: !!p.info.tower, heal: !!p.info.heal });
+  ev(b, { type: 'land', key: p.key, x: p.tx, y: p.ty, splash: !!p.info.a.splash, tower: !!p.info.tower, heal: !!p.info.heal, side: p.side, cata: !!p.info.catapult });
   if (p.info.heal) { if (live && tg.side === p.side) heal(b, tg, p.info.heal); return; }
   if (p.info.a.splash) impact(b, p.info, live && Math.hypot(aimX(tg) - p.tx, aimY(tg) - p.ty) < (tg.r || 30) + 16 ? tg : null, p.tx, p.ty);
   else if (live) impact(b, p.info, tg, p.tx, p.ty);
@@ -559,10 +635,18 @@ function separate(b) {
   }
 }
 
-// Résumé de fin pour l'écran de résultats. Couronnes : 3 = jauge pleine, 2 = jauge à 60 % ou plus, 1 = 25 % (ou victoire).
+// Résumé de fin pour l'écran de résultats.
+//   mode jauge : gauge = sa jauge ; couronnes : 3 = jauge pleine, 2 = jauge à 60 % ou plus, 1 = 25 % (ou victoire) ;
+//   mode camps : gauge = part du camp adverse détruite ; couronnes : 3 = camp adverse détruit, 2 = au moins 50 %, 1 = victoire.
 export function summary(b, side) {
   const me = b.players[side], foe = b.players[1 - side], win = b.winner === side;
+  const base = { win, draw: b.winner === -1, kos: me.kos, aura: Math.round(me.spent), towers: b.towers.filter((t) => t.side === side).length, crates: me.crates, why: b.why, mode: b.mode };
+  if (b.camps) {
+    const lost = (s) => 100 * (1 - Math.max(0, b.camps[s].hp) / b.camps[s].maxHp);
+    const stars = (d, won) => (d >= 99.999 ? 3 : d >= 50 ? 2 : won ? 1 : 0);
+    const g = lost(1 - side), fg = lost(side);
+    return { ...base, crowns: stars(g, win), lost: stars(fg, b.winner === 1 - side), gauge: Math.floor(g * 10) / 10, foeGauge: Math.floor(fg * 10) / 10, shots: me.shots || 0 };
+  }
   const stars = (g, won) => (g >= 99.999 ? 3 : g >= 60 ? 2 : g >= 25 || won ? 1 : 0);
-  return { win, draw: b.winner === -1, crowns: stars(me.gauge, win), lost: stars(foe.gauge, b.winner === 1 - side), kos: me.kos, aura: Math.round(me.spent),
-    gauge: Math.floor(me.gauge * 10) / 10, foeGauge: Math.floor(foe.gauge * 10) / 10, towers: b.towers.filter((t) => t.side === side).length, crates: me.crates, why: b.why };
+  return { ...base, crowns: stars(me.gauge, win), lost: stars(foe.gauge, b.winner === 1 - side), gauge: Math.floor(me.gauge * 10) / 10, foeGauge: Math.floor(foe.gauge * 10) / 10 };
 }
