@@ -43,10 +43,12 @@ export function json(key, path) {
 // v4 = effets d'attaque sans halo noir)
 export const unitAssets = (id, hd) => { const k = hd ? id + '_hd' : id; return Promise.all([image(k, 'units/' + k + '.webp?v=4'), json(k, 'units/' + k + '.json?v=4')]); };
 // La grande arène : fond en haute définition, mini-carte, masque de l'eau (pour l'animer), éléments détourés (boîtes,
-// cages, tours, machine, tente), barre du bas, fond flouté autour de l'écran, et l'orang-outan qui garde les tours
+// cages, tours, tente), barre du bas, fond flouté autour de l'écran, les singes des tours, les catapultes et leur
+// tutomonkey, et les deux dresseurs (?v=2 : la carte sans la machine du centre)
+export const ARENA_SPRITES = ['towermonkey0', 'towermonkey1', 'cata0', 'cata1', 'tutomonkey', 'trainer0', 'trainer1'];
 export function mapAssets(n) {
-  return Promise.all([image('map', 'map/map.webp?v=1'), image('mini', 'map/mini.webp?v=1'), image('water', 'map/water.png?v=1'), image('props', 'map/props.webp?v=1'),
-    image('hud', 'arena/hud.webp'), image('field' + n, 'arena/field' + n + '.webp?v=3'), unitAssets('orang')]);
+  return Promise.all([image('map', 'map/map.webp?v=2'), image('mini', 'map/mini.webp?v=2'), image('water', 'map/water.png?v=2'), image('props', 'map/props.webp?v=2'),
+    image('hud', 'arena/hud.webp'), image('field' + n, 'arena/field' + n + '.webp?v=3'), ...ARENA_SPRITES.map((k) => unitAssets(k))]);
 }
 // Planches haute définition (?v=3 : leur découpage a changé, l'ancienne copie gardée hors ligne ne doit pas servir)
 export const chestAssets = (tier) => image('sheet_' + tier, 'chests/' + tier + '.webp?v=3');

@@ -8,6 +8,8 @@
 //   range     : portée (cases, de bord à bord) ; sight : distance à laquelle il repère un ennemi (cases)
 //   speed     : vitesse (cases par seconde) ; radius : rayon du corps (cases) ; mass : qui pousse qui
 //   air       : true = il vole (il passe au-dessus de l'eau ; seuls ceux qui visent les airs peuvent le toucher)
+//   swim      : true = il nage (posé dans l'eau de son camp, il ne quitte jamais la rivière ; seuls les volants et les
+//               autres nageurs peuvent le toucher, et lui ne touche pas les volants) ; bldg : part de ses dégâts sur les structures
 //   targets   : 'all' (sol et air) ou 'ground' (sol seulement)
 //   attacks   : normal (chaque coup), special (un coup sur « every », ou une compétence à part), melee (de tout près)
 //       anim : animation de la planche (atk1 ou atk2) ; dur : durée (s) ; windup : moment où le coup part (s)
@@ -36,7 +38,7 @@ export const ANIMALS = {
       normal: { anim: 'atk1', name: 'Coup de queue', dur: 0.5, windup: 0.24, mult: 1 },
       special: { anim: 'atk2', name: 'Coup du poirier', every: 4, dur: 0.7, windup: 0.4, mult: 2.2, knock: 0.6 },
     },
-    desc: 'Deux singes teigneux qui frappent très vite. Parfaits pour casser une boîte ou vider la jauge adverse.',
+    desc: 'Deux singes teigneux qui frappent très vite. Parfaits pour casser une boîte ou une catapulte.',
     talent: 'Coup du poirier : leur 4ᵉ coup fait plus de deux fois plus mal et repousse la cible.',
   },
   bulldog: {
@@ -76,7 +78,7 @@ export const ANIMALS = {
       normal: { anim: 'atk1', name: 'Mâchoire', dur: 0.7, windup: 0.36, mult: 1 },
       special: { anim: 'atk2', name: 'Queue tournoyante', every: 3, dur: 0.9, windup: 0.5, mult: 0.8, splash: 1.7, splashMult: 1, knock: 0.6, around: true },
     },
-    desc: 'Des dégâts énormes, mais très peu de points de vie. Protège-le et il broie tout : animaux, boîtes, tours et cible.',
+    desc: 'Des dégâts énormes, mais très peu de points de vie. Protège-le et il broie tout : animaux, boîtes, tours, catapultes et camps.',
     talent: 'Queue tournoyante : son 3ᵉ coup balaie tous les ennemis autour de lui et les repousse.',
   },
   eagle: {
@@ -87,7 +89,7 @@ export const ANIMALS = {
       melee: { anim: 'atk1', name: 'Serres', dur: 0.56, windup: 0.28, mult: 1.3 },
     },
     desc: 'Il survole les rivières sans passer par les ponts. Ses bourrasques repoussent les ennemis, bien plus fort que les cailloux de l\'orang-outan.',
-    talent: 'Bourrasque : chaque rafale repousse la cible et ceux qui l\'entourent. Idéal pour écarter les ennemis de la cible ou d\'une tour.',
+    talent: 'Bourrasque : chaque rafale repousse la cible et ceux qui l\'entourent. Idéal pour écarter les ennemis de ta catapulte ou d\'une tour.',
   },
   gorilla: {
     name: 'Gorille', rarity: 'legendary', cost: 7, count: 1, role: 'Colosse',
@@ -119,11 +121,41 @@ export const ANIMALS = {
     desc: 'Une montagne. Il puise de l\'eau dans les rivières de l\'arène, puis asperge les ennemis de loin, ce qui les ralentit.',
     talent: 'Trompe à eau : près d\'une rivière, il remplit sa trompe (3 jets). Chaque jet mouille un groupe d\'ennemis et les ralentit de moitié pendant 3,5 s.',
   },
+  clownfish: {
+    name: 'Poisson clown', rarity: 'common', cost: 3, count: 2, role: 'Duo nageur',
+    hp: 300, dmg: 40, hitEvery: 1.0, range: 3.6, sight: 5.5, speed: 1.5, radius: 0.36, mass: 2, air: false, swim: true, bldg: 0.45, targets: 'ground',
+    attacks: {
+      normal: { anim: 'atk1', name: 'Bulle', dur: 0.6, windup: 0.4, mult: 1, proj: 'bubble', projSpeed: 8.5 },
+      special: { anim: 'atk2', name: 'Pluie de bulles', every: 4, dur: 0.8, windup: 0.5, mult: 1.3, proj: 'bubbles', projSpeed: 7, arc: true, splash: 1.2, splashMult: 0.7, slow: { k: 0.4, dur: 2.5 } },
+    },
+    desc: 'Deux poissons farceurs qui nagent dans la rivière et crachent des bulles sur tout ce qui passe près de l\'eau. Seuls les volants et les autres nageurs peuvent les toucher.',
+    talent: 'Pluie de bulles : leur 4ᵉ bulle éclate en pluie sur un groupe d\'ennemis et les ralentit.',
+  },
+  octo: {
+    name: 'Poulpe', rarity: 'rare', cost: 4, count: 1, role: 'Lutteur des rivières',
+    hp: 1150, dmg: 105, hitEvery: 1.3, range: 1.6, sight: 5.5, speed: 1.2, radius: 0.5, mass: 6, air: false, swim: true, bldg: 0.45, targets: 'ground',
+    attacks: {
+      normal: { anim: 'atk1', name: 'Coup de tentacule', dur: 0.75, windup: 0.45, mult: 1 },
+      special: { anim: 'atk2', name: 'Tourbillon', every: 3, dur: 1.0, windup: 0.6, mult: 0.9, splash: 2.0, splashMult: 1, around: true, stun: 0.8 },
+    },
+    desc: 'Il surgit de l\'eau pour gifler tout ce qui s\'approche des berges, et il encaisse longtemps. Seuls les volants et les autres nageurs peuvent le toucher.',
+    talent: 'Tourbillon : son 3ᵉ coup soulève un tourbillon de tentacules qui frappe et étourdit tous les ennemis autour de lui.',
+  },
+  dolphin: {
+    name: 'Dauphin', rarity: 'epic', cost: 5, count: 1, role: 'Canonnier des rivières',
+    hp: 950, dmg: 170, hitEvery: 1.5, range: 4.6, sight: 6, speed: 1.9, radius: 0.5, mass: 5, air: false, swim: true, bldg: 0.45, targets: 'ground',
+    attacks: {
+      normal: { anim: 'atk1', name: 'Boule d\'eau', dur: 0.7, windup: 0.5, mult: 1, proj: 'waterball', projSpeed: 9, splash: 0.7, splashMult: 0.5 },
+      special: { anim: 'atk2', name: 'Saut de la vague', every: 3, dur: 1.0, windup: 0.62, mult: 1.5, proj: 'wave', projSpeed: 8, splash: 1.6, splashMult: 0.8, knock: 0.7 },
+    },
+    desc: 'Le plus rapide des nageurs : il file le long de la rivière et bombarde de loin avec des boules d\'eau. Seuls les volants et les autres nageurs peuvent le toucher.',
+    talent: 'Saut de la vague : à son 3ᵉ coup, il bondit hors de l\'eau et lance une vague qui frappe et repousse tout un groupe.',
+  },
 };
 
 export const ANIMAL_IDS = Object.keys(ANIMALS);
 // ordre d'affichage dans la collection (par rareté, puis par coût)
-export const ORDER = ['kitten', 'monkey', 'bulldog', 'pig', 'orang', 'alligator', 'eagle', 'gorilla', 'rhino', 'elephant'];
+export const ORDER = ['kitten', 'clownfish', 'monkey', 'bulldog', 'pig', 'octo', 'orang', 'alligator', 'eagle', 'dolphin', 'gorilla', 'rhino', 'elephant'];
 
 export const MAX_LEVEL = 11;
 export const LEVEL_GROWTH = 1.1;  // +10 % de PV et de dégâts par niveau
@@ -139,6 +171,5 @@ export function statsAt(id, level = 1) {
 // Structures de la carte. Leurs points de vie suivent le niveau moyen des deux decks.
 export const STRUCTS = {
   crate: { hp: 420, respawn: 50 },                                   // boîte à bonus
-  tower: { hp: 1500, retake: 1.25, dmg: 105, hitEvery: 2.3, range: 21, splash: 1.0, splashMult: 0.5, knock: 0.2 },   // tour latérale et son orang-outan
-  gauge: { hp: 30000 },                                              // dégâts à infliger à la cible pour remplir une jauge à 100 %
+  tower: { hp: 1500, retake: 1.25, dmg: 105, hitEvery: 2.3, range: 21, splash: 1.0, splashMult: 0.5, knock: 0.2 },   // tour latérale et son singe lanceur
 };

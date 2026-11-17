@@ -1,20 +1,26 @@
 // Se déplacer sur la carte : où l'on peut marcher, où est l'eau, et quel chemin prendre (par les ponts) pour aller
 // d'un point à un autre. La grille vient de src/data/map.js : une case = CELL pixels de la carte.
-import { GRID_RLE, GW, GH, CELL } from '../data/map.js';
+// Les animaux aquatiques ont leur propre grille : la rivière, passages sous les ponts compris (SWIM).
+import { GRID_RLE, SWIM_RLE, GW, GH, CELL } from '../data/map.js';
 
 export const WATER = 7;
 const N = GW * GH;
-export const GRID = (() => {
+const unrle = (rle) => {
   const g = new Uint8Array(N); let i = 0, m;
   const re = /(\d)(?:([a-z])|\((\d+)\))/g;
-  while ((m = re.exec(GRID_RLE))) { const n = m[2] ? m[2].charCodeAt(0) - 96 : +m[3]; g.fill(+m[1], i, i + n); i += n; }
+  while ((m = re.exec(rle))) { const n = m[2] ? m[2].charCodeAt(0) - 96 : +m[3]; g.fill(+m[1], i, i + n); i += n; }
   return g;
-})();
-const ok = (c) => { const v = GRID[c]; return v > 0 && v < WATER; };
+};
+export const GRID = unrle(GRID_RLE);
+export const SWIM = unrle(SWIM_RLE);
+const okLand = (c) => { const v = GRID[c]; return v > 0 && v < WATER; };
+const ok = okLand;
+const okSwim = (c) => SWIM[c] === 1;
 export const cellOf = (x, y) => { const gx = Math.floor(x / CELL), gy = Math.floor(y / CELL); return gx < 0 || gy < 0 || gx >= GW || gy >= GH ? -1 : gy * GW + gx; };
 // 0 interdit, 1 haut, 2 bas, 3 gauche, 4 droite, 5 centre, 6 pont, 7 eau
 export const zoneAt = (x, y) => { const c = cellOf(x, y); return c < 0 ? 0 : GRID[c]; };
 export const walkable = (x, y) => { const c = cellOf(x, y); return c >= 0 && ok(c); };
+export const swimmable = (x, y) => { const c = cellOf(x, y); return c >= 0 && okSwim(c); };
 const cx = (c) => (c % GW + 0.5) * CELL, cy = (c) => (Math.floor(c / GW) + 0.5) * CELL;
 
 // ---------- distance à l'eau (pour l'éléphant qui y puise) : deux passes sur la grille ----------
@@ -40,16 +46,42 @@ export function waterNear(x, y) {
   return { d: wd[c] * CELL, x: cx(wsrc[c]), y: cy(wsrc[c]) };
 }
 
-// Y a-t-il du sol tout le long du segment ?
-export function los(x0, y0, x1, y1) {
-  const d = Math.hypot(x1 - x0, y1 - y0), n = Math.ceil(d / (CELL * 0.5));
-  for (let i = 1; i <= n; i++) { const t = i / n; if (!walkable(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t)) return false; }
+// ---------- distance à la rivière navigable (portée des animaux aquatiques) ----------
+const sd = new Float32Array(N), ssrc = new Int32Array(N);
+(() => {
+  for (let c = 0; c < N; c++) { if (okSwim(c)) { sd[c] = 0; ssrc[c] = c; } else { sd[c] = 1e9; ssrc[c] = -1; } }
+  const relax = (c, n, d) => { if (sd[n] + d < sd[c]) { sd[c] = sd[n] + d; ssrc[c] = ssrc[n]; } };
+  for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
+    const c = y * GW + x;
+    if (x > 0) relax(c, c - 1, 1); if (y > 0) relax(c, c - GW, 1);
+    if (x > 0 && y > 0) relax(c, c - GW - 1, 1.414); if (x < GW - 1 && y > 0) relax(c, c - GW + 1, 1.414);
+  }
+  for (let y = GH - 1; y >= 0; y--) for (let x = GW - 1; x >= 0; x--) {
+    const c = y * GW + x;
+    if (x < GW - 1) relax(c, c + 1, 1); if (y < GH - 1) relax(c, c + GW, 1);
+    if (x < GW - 1 && y < GH - 1) relax(c, c + GW + 1, 1.414); if (x > 0 && y < GH - 1) relax(c, c + GW - 1, 1.414);
+  }
+})();
+// Distance (px) jusqu'à la rivière navigable la plus proche, et ce point d'eau
+export function swimNear(x, y) {
+  const c = cellOf(Math.max(0, Math.min(GW * CELL - 1, x)), Math.max(0, Math.min(GH * CELL - 1, y))); if (c < 0 || ssrc[c] < 0) return null;
+  return { d: sd[c] * CELL, x: cx(ssrc[c]), y: cy(ssrc[c]) };
+}
+// Eau où chaque camp peut poser ses animaux aquatiques : la rivière qui longe son camp, sur les côtés
+export const swimHome = (side, x, y) => swimmable(x, y) && Math.abs(x - 768) >= 136 && (side === 0 ? y >= 700 : y <= 324);
+
+// Y a-t-il du sol (ou de l'eau, pour un nageur) tout le long du segment ?
+export function los(x0, y0, x1, y1, swim = false) {
+  const d = Math.hypot(x1 - x0, y1 - y0), n = Math.ceil(d / (CELL * 0.5)), f = swim ? swimmable : walkable;
+  for (let i = 1; i <= n; i++) { const t = i / n; if (!f(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t)) return false; }
   return true;
 }
-// Le point de sol le plus proche (recherche par anneaux de cases). zones : liste de zones permises, ou rien.
-export function nearest(x, y, zones = null) {
+// Le point de sol le plus proche (recherche par anneaux de cases). zones : liste de zones permises, ou rien ;
+// ou une fonction (x, y) → vrai pour les cases permises ; swim : chercher dans la rivière navigable.
+export function nearest(x, y, zones = null, swim = false) {
   const gx0 = Math.max(0, Math.min(GW - 1, Math.floor(x / CELL))), gy0 = Math.max(0, Math.min(GH - 1, Math.floor(y / CELL)));
-  const good = (c) => ok(c) && (!zones || zones.includes(GRID[c]));
+  const pass = swim ? okSwim : ok;
+  const good = typeof zones === 'function' ? (c) => pass(c) && zones(cx(c), cy(c)) : (c) => pass(c) && (!zones || zones.includes(GRID[c]));
   if (good(gy0 * GW + gx0) && cellOf(x, y) === gy0 * GW + gx0) return { x, y };
   let best = -1, bd = Infinity;
   for (let r = 0; r < 90; r++) {
@@ -84,12 +116,13 @@ function pop() {
 const DX = [1, -1, 0, 0, 1, 1, -1, -1], DY = [0, 0, 1, -1, 1, -1, 1, -1];
 // Chemin de (sx, sy) vers (tx, ty). reach : on s'arrête dès qu'on est à moins de « reach » pixels du but (utile quand
 // le but est une structure sur laquelle on ne marche pas) ; done(x, y) : autre façon de dire « on est arrivé ».
-// Renvoie une liste de points [x, y] ou null.
-export function findPath(sx, sy, tx, ty, reach = 0, done = null) {
+// swim : par la rivière (animaux aquatiques). Renvoie une liste de points [x, y] ou null.
+export function findPath(sx, sy, tx, ty, reach = 0, done = null, swim = false) {
+  const ok = swim ? okSwim : okLand, walk = swim ? swimmable : walkable, see = (a, b, c, d) => los(a, b, c, d, swim);
   let s = cellOf(sx, sy);
-  if (s < 0 || !ok(s)) { const p = nearest(sx, sy); if (!p) return null; s = cellOf(p.x, p.y); }
+  if (s < 0 || !ok(s)) { const p = nearest(sx, sy, null, swim); if (!p) return null; s = cellOf(p.x, p.y); }
   let goal = cellOf(tx, ty);
-  if (reach <= 0 && (goal < 0 || !ok(goal))) { const p = nearest(tx, ty); if (!p) return null; tx = p.x; ty = p.y; goal = cellOf(tx, ty); }
+  if (reach <= 0 && (goal < 0 || !ok(goal))) { const p = nearest(tx, ty, null, swim); if (!p) return null; tx = p.x; ty = p.y; goal = cellOf(tx, ty); }
   gen++; hn = 0;
   const hfn = (c) => { const dx = Math.abs(cx(c) - tx), dy = Math.abs(cy(c) - ty); return Math.max(0, (Math.max(dx, dy) + 0.414 * Math.min(dx, dy)) - reach) / CELL; };
   gS[s] = 0; from[s] = -1; seen[s] = gen; push(s, hfn(s));
@@ -112,11 +145,11 @@ export function findPath(sx, sy, tx, ty, reach = 0, done = null) {
   cells.reverse();
   // on tend le fil : on ne garde que les points où il faut tourner
   const pts = []; let ax = sx, ay = sy, i = 0;
-  if (!walkable(sx, sy)) { ax = cx(cells[0]); ay = cy(cells[0]); pts.push([ax, ay]); }
+  if (!walk(sx, sy)) { ax = cx(cells[0]); ay = cy(cells[0]); pts.push([ax, ay]); }
   while (i < cells.length - 1) {
     let j = cells.length - 1;
-    while (j > i + 1 && !los(ax, ay, cx(cells[j]), cy(cells[j]))) j = i + 1 + ((j - i - 1) >> 1);
-    while (j < cells.length - 1 && los(ax, ay, cx(cells[j + 1]), cy(cells[j + 1]))) j++;
+    while (j > i + 1 && !see(ax, ay, cx(cells[j]), cy(cells[j]))) j = i + 1 + ((j - i - 1) >> 1);
+    while (j < cells.length - 1 && see(ax, ay, cx(cells[j + 1]), cy(cells[j + 1]))) j++;
     ax = cx(cells[j]); ay = cy(cells[j]); pts.push([ax, ay]); i = j;
   }
   if (!pts.length) pts.push([cx(end), cy(end)]);

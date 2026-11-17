@@ -1,24 +1,29 @@
 // Un combat du début à la fin : recherche d'adversaire, combat en temps réel sur la grande arène (caméra qui défile,
-// Aura, main de 4 cartes, ordres donnés animal par animal, Siffler), écran de victoire ou de défaite, récompenses.
+// Aura, main de 4 cartes, ordres donnés animal par animal, Siffler, catapulte), écran de victoire ou de défaite, récompenses.
+// Le combat de démonstration du tutoriel (src/ui/tuto.js) passe aussi par ici, avec ses propres bulles et sans trophées.
 //
 // Au doigt (ou à la souris) :
-//   - glisser une carte sur la zone bleue : l'animal y tombe (toucher une carte puis toucher la zone marche aussi) ;
+//   - glisser une carte sur la zone bleue : l'animal y tombe (toucher une carte puis toucher la zone marche aussi) ; un nageur
+//     se pose dans l'eau de son camp ;
 //   - glisser l'arène : elle défile ; deux doigts ou la molette : zoom ; toucher la mini-carte : la caméra y va ;
 //   - toucher un de ses animaux : il est choisi (les autres touchers en ajoutent ou en retirent), puis toucher un animal
-//     adverse, une boîte, une tour, le camp adverse ou la cible du centre l'envoie l'attaquer ; toucher le sol l'y envoie et l'y poste ;
-//   - glisser depuis un de ses animaux jusqu'à une cible : même ordre, d'un seul geste ;
+//     adverse, une boîte, une tour, la catapulte ou le camp adverse l'envoie l'attaquer ; toucher le sol l'y envoie et l'y poste ;
+//   - glisser depuis un de ses animaux jusqu'à une cible : même ordre, d'un seul geste (la flèche tenue au bord fait défiler
+//     l'arène, de plus en plus vite) ;
 //   - « Attaquer » : tout s'allume (nos animaux, les adversaires, les structures) et toute la troupe est choisie ;
-//   - « Siffler » : les animaux choisis (ou tous) rentrent se soigner à la tente ; un second coup les relâche.
+//   - « Siffler » : les animaux choisis (ou tous) rentrent se soigner à la tente ; un second coup les relâche ;
+//   - « Catapulte » (ou toucher sa catapulte) : elle garde le camp, ou le singe la pousse au centre pour tirer sur le camp adverse.
 import { $, h, wait, fmt, clamp, rand, countTo, TEST } from '../core/utils.js';
 import { S } from '../core/save.js';
-import { sfx, play, music } from '../core/audio.js';
+import { sfx, play, music, ambience } from '../core/audio.js';
 import { IMG, unitAssets, mapAssets } from '../core/assets.js';
 import { CHESTS } from '../data/cards.js';
 import { ANIMALS } from '../data/animals.js';
 import { makeBot } from '../data/bots.js';
 import { arenaOf, ARENAS } from '../data/economy.js';
-import { createBattle, step, TICK, TILE, WS, deploy, command, canDeploy, clampDeploy, forfeit, summary, handOf, BONUS_FX, CAMPS } from '../game/rt.js';
+import { createBattle, step, TICK, TILE, WS, deploy, command, canDeploy, clampDeploy, forfeit, summary, handOf, BONUS_FX, CATA, setCata } from '../game/rt.js';
 import { makeAI, aiStep } from '../game/ai.js';
+import { swimmable } from '../game/nav.js';
 import { newSeed } from '../core/rng.js';
 import { applyFight, deckLevels } from '../game/progress.js';
 import { View, textCanvas, HUD, FH, ZOOM, W, AIR_LIFT } from '../render/view.js';
@@ -33,9 +38,10 @@ let V = null, B = null, raf = 0, busy = false, lastT = 0;
 // sel : carte touchée (en attente d'un toucher sur l'arène) ; drag : carte qu'on fait glisser ; mode : ordres (tout s'allume) ;
 // picked : nos animaux choisis ; pickNew : le prochain toucher sur un de nos animaux recommence le choix ;
 // aim : flèche d'un ordre qu'on trace ; g : geste en cours sur l'arène ; pts : doigts posés ; pinch : zoom à deux doigts
-const U = { sel: -1, drag: null, hint: '', hintT: 0, mode: false, picked: new Set(), pickNew: true, aim: null, hover: 0, g: null, pts: new Map(), pinch: null, mini: false, fling: null, zoneT: 0 };
+// edgeT : depuis combien de temps une carte ou une flèche est tenue au bord (l'arène défile de plus en plus vite)
+const U = { sel: -1, drag: null, hint: '', hintT: 0, mode: false, picked: new Set(), pickNew: true, aim: null, hover: 0, g: null, pts: new Map(), pinch: null, mini: false, fling: null, zoneT: 0, edgeT: 0 };
 const LIFT = AIR_LIFT * WS;                        // hauteur de vol, en pixels de la carte
-const JAR = [[738, 446], [797, 446]];              // haut du liquide des deux bocaux (bleu à gauche, rouge à droite)
+const isSwim = (id) => !!(id && ANIMALS[id] && ANIMALS[id].swim);
 
 // ---------- recherche d'un adversaire ----------
 const avgLevel = (deck) => (deck.length ? deck.reduce((n, c) => n + c.level, 0) / deck.length : 1);
@@ -65,34 +71,37 @@ function matchOverlay() {
   };
 }
 
-// Lance un combat. mode : 'ranked' (trophées) ou 'friendly' (amical). opp : adversaire imposé (ami, membre du clan).
-export async function startFight({ mode = 'ranked', opp = null } = {}) {
+// Lance un combat. mode : 'ranked' (trophées), 'friendly' (amical) ou 'demo' (le combat du tutoriel, contre un bot facile).
+// opp : adversaire imposé (ami, membre du clan, bot du tutoriel). deck : cartes prêtées pour ce combat (tutoriel).
+// guide : les bulles du tutoriel (src/ui/tuto.js) : start(api), tick(dt), event(e), done(res) qui rend la main au menu.
+export async function startFight({ mode = 'ranked', opp = null, deck = null, guide = null } = {}) {
   if (busy) return; busy = true;
   try {
     sfx.match();
     const ov = matchOverlay(), t0 = performance.now();
     if (!opp) opp = await findOpp(mode);
-    else opp = { ...opp, skill: opp.skill || 0.5 };
-    const mine = deckLevels(), arena = arenaOf(S.trophies);
+    else opp = { ...opp, skill: opp.skill === undefined ? 0.5 : opp.skill };
+    const mine = deck || deckLevels(), arena = mode === 'demo' ? 1 : arenaOf(S.trophies);
     const loading = Promise.all([mapAssets(arena), ...[...new Set([...mine, ...opp.deck].map((c) => c.id))].map((id) => unitAssets(id))]);
     if (!TEST) await wait(Math.max(0, 1000 - (performance.now() - t0)));
     await ov.reveal(opp);
     await loading;
-    enter(opp, mode, mine, arena);
+    enter(opp, mode, mine, arena, guide);
     ov.close();
   } catch (e) { console.error(e); busy = false; toast('Impossible de lancer le combat.'); document.querySelectorAll('.mm').forEach((x) => x.remove()); }
 }
 
 // ---------- entrée dans l'arène ----------
-function enter(opp, mode, mine, arena) {
+function enter(opp, mode, mine, arena, guide) {
   if (!V) { V = new View($('cv')); onResize((v) => V.resize(v.scale)); bindPointer(); }
   V.resize(stageView.scale); V.reset(arena);
   const lv = (d) => clamp(Math.round(avgLevel(d)), 1, 11);
-  const b = createBattle({ decks: [mine, opp.deck], towerLevels: [lv(mine), lv(opp.deck)], seed: newSeed(), mode: S.settings.camps === false ? 'jauge' : 'camps' });
-  B = { b, mode, opp, arena, acc: 0, ai: makeAI(1, opp.skill === undefined ? 0.5 : opp.skill), endShown: false, party: false, mile: [0, 0], sec: 99, tips: tipsFor(b), thr: {}, intro: TEST ? 0 : 1.1 };
-  Object.assign(U, { sel: -1, drag: null, mode: false, picked: new Set(), pickNew: true, aim: null, hover: 0, g: null, pinch: null, mini: false, fling: null, zoneT: 0 });
+  const b = createBattle({ decks: [mine, opp.deck], towerLevels: [lv(mine), lv(opp.deck)], seed: newSeed() });
+  if (mode === 'demo') { const cp = b.camps[1]; cp.maxHp = cp.hp = Math.round(cp.maxHp * 0.55); }      // le camp du bot d'entraînement tombe plus vite
+  B = { b, mode, opp, arena, acc: 0, ai: makeAI(1, opp.skill), endShown: false, party: false, sec: 99, tips: guide ? [] : tipsFor(), thr: {}, intro: TEST ? 0 : 1.1, guide, cataGlow: 0, seen: {}, ham: [0, 0] };
+  Object.assign(U, { sel: -1, drag: null, mode: false, picked: new Set(), pickNew: true, aim: null, hover: 0, g: null, pinch: null, mini: false, fling: null, zoneT: 0, edgeT: 0 });
   U.pts.clear();
-  say('Glisse une carte dans ta zone bleue', 6);
+  if (!guide) say('Glisse une carte dans ta zone bleue', 6);
   $('scrMenu').hidden = true; $('scrBattle').hidden = false; setBackdrop(IMG.mini || IMG['field' + arena]);
   const hud = $('bHud'); hud.textContent = '';
   hud.append(h('button', { class: 'icbtn bflag', 'aria-label': 'Abandonner', onclick: quit }));
@@ -101,25 +110,38 @@ function enter(opp, mode, mine, arena) {
   V.cam.x = 767; V.cam.y = 512; V.cam.z = ZOOM.min; V.clampCam(V.cam);
   if (TEST) { V.cam.y = 640; V.cam.z = ZOOM.start; V.clampCam(V.cam); }
   V.banner('COMBAT !', { size: 150, tint: 'orange', life: 1.3, y: 700 }); play('fight_start'); play('horn', { at: 0.15, v: 0.7 });
-  if (b.camps) V.banner('Détruis le camp adverse !', { size: 44, tint: 'white', life: 1.9, y: 800, delay: 0.35 });
+  V.banner('Détruis le camp adverse !', { size: 44, tint: 'white', life: 1.9, y: 800, delay: 0.35 });
   V.shake = 10; V.mapfx.excite(1);
+  startAmbience();
+  if (guide) guide.start(guideApi());
   lastT = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(loop);
 }
 async function quit() {
   if (!B || B.b.over) return;
   sfx.click();
-  if (await ask('Abandonner ?', B.b.camps ? 'Ton adversaire gagnera, comme si ton camp était détruit.' : 'Ton adversaire gagnera, jauge pleine.', 'Abandonner', 'Continuer')) { if (B && !B.b.over) forfeit(B.b, 0); }
+  const demo = B.mode === 'demo';
+  if (await ask(demo ? 'Quitter l\'entraînement ?' : 'Abandonner ?', demo ? 'Tu pourras le refaire depuis les réglages.' : 'Ton adversaire gagnera, comme si ton camp était détruit.', demo ? 'Quitter' : 'Abandonner', 'Continuer')) { if (B && !B.b.over) forfeit(B.b, 0); }
 }
-// Astuces des premiers combats (temps de jeu, texte), montrées quand rien d'autre n'est affiché
-const TIPS = [[9, 'Fais glisser l\'arène pour la parcourir'], [18, 'Touche un de tes animaux, puis sa cible'], [30, 'Casse les boîtes : elles cachent des bonus'],
-  [44, 'Prends les tours : l\'orang-outan libéré t\'aide'], [58, 'Frappe la cible du centre : ta jauge monte'], [75, 'Siffler : tes animaux rentrent se soigner']];
-// Mode camps (le 3e élément marque ce qui est nouveau : montré aussi aux joueurs qui connaissent déjà le jeu, deux combats)
-const TIPS_CAMPS = [[9, 'Fais glisser l\'arène pour la parcourir'], [15, 'Détruis le camp rouge, tout en haut, pour gagner', 1], [26, 'Touche un de tes animaux, puis sa cible'],
-  [36, 'Frappe la machine du centre : elle tire sur le camp adverse', 1], [50, 'Défends ton camp : son garde ne suffit pas toujours', 1],
-  [64, 'Les petits ponts des côtés contournent le centre', 1], [80, 'Prends les tours : l\'orang-outan libéré t\'aide'], [95, 'Siffler : tes animaux rentrent se soigner']];
-function tipsFor(b) {
-  if (!b.camps) return S.fights < 3 ? TIPS.slice() : [];
-  return S.fights < 3 ? TIPS_CAMPS.slice() : (S.campFights || 0) < 2 ? TIPS_CAMPS.filter((x) => x[2]) : [];
+// Ce que le tutoriel peut faire pendant son combat
+function guideApi() {
+  return {
+    get b() { return B && B.b; }, get view() { return V; }, get ui() { return U; },
+    say, glowCata(t = 6) { if (B) B.cataGlow = t; }, look(x, y, z) { V.lookAt(x, y, z || ZOOM.start); },
+    ping(x, y, col) { V.ping(x, y, col || '#ffd23f'); },
+  };
+}
+// Astuces des premiers combats (temps de jeu, texte), montrées quand rien d'autre n'est affiché. Le 3e élément marque ce qui
+// est nouveau avec les catapultes : montré aussi, deux combats, aux joueurs qui connaissent déjà le jeu.
+const TIPS = [[9, 'Fais glisser l\'arène pour la parcourir'], [15, 'Détruis le camp rouge, tout en haut, pour gagner', 1], [26, 'Touche un de tes animaux, puis sa cible'],
+  [36, 'Touche « Catapulte » : le singe la pousse au centre', 1], [52, 'Au centre, elle tire sur le camp adverse. Protège-la !', 1],
+  [68, 'Casse les boîtes : elles cachent des bonus'], [82, 'Prends les tours : leur singe lance des pierres pour toi', 1], [98, 'Siffler : tes animaux rentrent se soigner']];
+function tipsFor() {
+  return S.fights < 3 ? TIPS.slice() : (S.cataFights || 0) < 2 ? TIPS.filter((x) => x[2]) : [];
+}
+// Une astuce liée à ce qui se passe (première fois seulement, pendant les premiers combats avec les catapultes)
+function tipOnce(key, text, t = 3) {
+  if (B.guide || B.seen[key] || ((S.cataFights || 0) >= 3 && S.fights >= 3)) return;
+  B.seen[key] = 1; say(text, t);
 }
 
 // ---------- doigt : cartes, caméra, ordres ----------
@@ -138,30 +160,49 @@ function unitAt(w, side, tolPx = 26) {
   for (const u of B.b.units) { if (u.dead || u.side !== side) continue; const q = bodyHit(u, w, tol); if (q < bs) { bs = q; best = u; } }
   return best;
 }
-// Ce qu'on peut viser sous le doigt : un animal adverse, une boîte, une tour qui n'est pas à nous, la cible du centre
+// Une catapulte sous le doigt (son bâti, des roues au haut du bras)
+function cataAt(w, side, tolPx = 20) {
+  const k = B.b.catas[side], tol = tolPx / V.cam.z;
+  return Math.abs(w.x - k.x) < 42 + tol && w.y > k.y - 84 - tol && w.y < k.y + 16 + tol ? k : null;
+}
+// Ce qu'on peut viser sous le doigt : un animal adverse, une boîte, une tour qui n'est pas à nous, la catapulte ou le camp adverse
 function targetAt(w) {
   const b = B.b, tol = 24 / V.cam.z;
   const u = unitAt(w, 1); if (u && u.spawn <= 0) return u;
+  const k = cataAt(w, 1); if (k && !k.dead) return k;
   for (const c of b.crates) if (!c.dead && Math.hypot((w.x - c.x) / (c.rx + tol), (w.y - c.y + 14) / (c.ry + 20 + tol)) < 1) return c;
   for (const t of b.towers) if (t.side !== 0 && Math.abs(w.x - t.x) < 78 + tol && w.y > 280 - tol && w.y < 590) return t;
-  const cp = b.camps && b.camps[1]; if (cp && !cp.dead && Math.abs(w.x - cp.x) < 118 + tol && w.y > -20 && w.y < cp.y + 64 + tol) return cp;
-  const m = b.machine; if (Math.abs(w.x - m.x) < 100 + tol && w.y > 392 - tol && w.y < 562 + tol) return m;
+  const cp = b.camps[1]; if (!cp.dead && Math.abs(w.x - cp.x) < 118 + tol && w.y > -20 && w.y < cp.y + 64 + tol) return cp;
   return null;
 }
-const NAMES = { crate: 'la boîte', tower: 'la tour', machine: 'la cible', camp: 'le camp' };
 
 function tryDeploy(slot, x, y) {
   const b = B.b, card = handOf(b, 0)[slot]; if (!card) return false;
-  if (!canDeploy(b, 0, x, y)) {     // le doigt déborde un peu : on pose au bord de la zone
-    const q = clampDeploy(b, 0, x, y);
-    if (Math.hypot(q.x - x, q.y - y) > 1.6 * TILE) { play('error', { v: 0.6 }); say('Pose tes animaux dans ta zone bleue'); U.zoneT = 1.4; return false; }
+  const swim = isSwim(card.id);
+  if (!canDeploy(b, 0, x, y, card.id)) {     // le doigt déborde un peu : on pose au bord de la zone
+    const q = clampDeploy(b, 0, x, y, card.id);
+    if (Math.hypot(q.x - x, q.y - y) > (swim ? 2.2 : 1.6) * TILE) { play('error', { v: 0.6 }); say(swim ? 'Les nageurs se posent dans l\'eau de ton camp' : 'Pose tes animaux dans ta zone bleue'); U.zoneT = 1.4; return false; }
     x = q.x; y = q.y;
   }
   const r = deploy(b, 0, slot, x, y);
   if (r === 'aura') { play('no_aura'); say('Pas assez d\'Aura !'); V.text('AURA !', x, y - 24, { size: 30, tint: 'pink', life: 0.8 }); return false; }
   if (r) { play('error', { v: 0.6 }); return false; }
-  U.sel = -1; if (U.hint.startsWith('Glisse une carte') || U.hint.startsWith('Touche ta zone')) U.hintT = 0;
+  U.sel = -1; if (U.hint.startsWith('Glisse une carte') || U.hint.startsWith('Touche ta zone') || U.hint.startsWith('Touche l\'eau')) U.hintT = 0;
   return true;
+}
+// La carte choisie ou tenue est-elle un nageur ? (la vue montre alors l'eau de notre camp au lieu de la zone bleue)
+function swimCard() {
+  const s = U.drag ? U.drag.slot : U.sel; if (s < 0) return false;
+  const c = handOf(B.b, 0)[s]; return !!(c && isSwim(c.id));
+}
+// Bouton « Catapulte » (ou toucher sa catapulte) : défense au camp, ou attaque depuis le centre
+function cataToggle() {
+  const b = B.b, k = b.catas[0], want = k.want === 'centre' ? 'camp' : 'centre';
+  if (b.over || !setCata(b, 0, want)) return;
+  sfx.click(); B.cataGlow = 0;
+  if (want === 'centre') say(k.dead ? 'Une fois réparée, elle ira au centre' : 'Le singe pousse ta catapulte au centre', 2.2);
+  else say(k.dead ? 'Une fois réparée, elle gardera ton camp' : 'Ta catapulte rentre garder ton camp', 2.2);
+  B.tips = B.tips.filter((x) => !x[1].startsWith('Touche « Catapulte »'));      // il a compris : plus besoin de l'astuce
 }
 // Mode ordres : tout s'allume ; all : toute la troupe est choisie d'office
 function setMode(on, all = true) {
@@ -188,11 +229,19 @@ function orderAttack(ids, t) {
   const b = B.b;
   if (!ids.length) { play('error', { v: 0.5 }); say('Touche d\'abord un de tes animaux'); return; }
   const n = command(b, 0, ids, { ref: t.id });
-  if (!n) { play('error', { v: 0.6 }); say(t.kind === 'unit' && t.air ? 'Il vole : il faut un animal qui touche les airs' : 'Ils ne peuvent pas attaquer ça'); return; }
-  V.fx('ring_red', t.kind === 'unit' ? t.x : t.aimX, t.kind === 'unit' ? t.y + 2 : t.aimY + 10, { s0: 0.2, s1: t.kind === 'unit' ? 0.5 : 0.9, life: 0.45, flat: 0.55, a: 0.95 });
+  if (!n) { play('error', { v: 0.6 }); say(whyNot(ids, t)); return; }
+  V.fx('ring_red', t.kind === 'unit' ? t.x : t.aimX, t.kind === 'unit' ? t.y + 2 : t.aimY + 10, { s0: 0.2, s1: t.kind === 'unit' ? 0.5 : t.kind === 'cata' ? 0.6 : 0.9, life: 0.45, flat: 0.55, a: 0.95 });
   say(n === 1 ? 'À l\'attaque !' : n + ' animaux à l\'attaque !', 1.2);
   if (n < ids.length) say(n + ' sur ' + ids.length + ' peuvent attaquer ça', 1.6);
   U.pickNew = true;
+}
+// Pourquoi personne n'a pris l'ordre d'attaque
+function whyNot(ids, t) {
+  const us = ids.map((id) => B.b.ents.get(id)).filter((u) => u && !u.dead);
+  if (t.kind === 'unit' && t.air) return 'Il vole : il faut un animal qui touche les airs';
+  if (t.kind === 'unit' && t.swim) return 'Il nage : seuls les volants et les nageurs l\'atteignent';
+  if (us.length && us.every((u) => u.swim)) return 'Tes nageurs ne l\'atteignent pas depuis la rivière';
+  return 'Ils ne peuvent pas attaquer ça';
 }
 function orderMove(ids, w) {
   if (!ids.length) { play('error', { v: 0.5 }); say('Touche d\'abord un de tes animaux'); return; }
@@ -247,6 +296,7 @@ function bindPointer() {
     U.fling = null;
     if (inRect(p, HUD.whistle)) { whistle(); return; }
     if (inRect(p, HUD.attack)) { toggleMode(); return; }
+    if (inRect(p, HUD.cata, 4)) { cataToggle(); return; }
     const slot = HUD.slots.findIndex((r) => inRect(p, r, 4));
     if (slot >= 0) {
       const card = handOf(b, 0)[slot]; if (!card) return;
@@ -313,10 +363,11 @@ function bindPointer() {
   addEventListener('keydown', (e) => {
     if (!B || B.b.over || $('scrBattle').hidden) return;
     const k = e.key;
-    if (['1', '2', '3', '4'].includes(k)) { U.sel = +k - 1; say('Touche ta zone bleue pour le poser', 2.2); }
+    if (['1', '2', '3', '4'].includes(k)) { U.sel = +k - 1; say(swimCard() ? 'Touche l\'eau de ton camp pour le poser' : 'Touche ta zone bleue pour le poser', 2.2); }
     else if (k === 'Escape') { U.sel = -1; setMode(false); }
     else if (k === 'a' || k === 'A') toggleMode();
     else if (k === 's' || k === 'S') whistle();
+    else if (k === 'c' || k === 'C') cataToggle();
     else if (k === '+' || k === '=') V.zoomAt(W / 2, 768, 1.15);
     else if (k === '-') V.zoomAt(W / 2, 768, 1 / 1.15);
     else if (k.startsWith('Arrow')) { const s = 90; V.panBy(k === 'ArrowLeft' ? s : k === 'ArrowRight' ? -s : 0, k === 'ArrowUp' ? s : k === 'ArrowDown' ? -s : 0); }
@@ -326,13 +377,15 @@ function tap(p, g) {
   const b = B.b, w = V.worldAt(p.x, p.y);
   if (p.y < 152) return;                                   // sous les jauges du haut : rien
   if (U.sel >= 0) {
-    const q = canDeploy(b, 0, w.x, w.y) ? w : clampDeploy(b, 0, w.x, w.y);
+    const card = handOf(b, 0)[U.sel], id = card ? card.id : null;
+    const q = canDeploy(b, 0, w.x, w.y, id) ? w : clampDeploy(b, 0, w.x, w.y, id);
     if (Math.hypot(q.x - w.x, q.y - w.y) <= 1.6 * TILE || !(unitAt(w, 0) || targetAt(w))) { tryDeploy(U.sel, w.x, w.y); return; }
     U.sel = -1;                                            // on touche un animal ou une cible : la carte retourne dans la main
   }
   const own = g.own ? b.ents.get(g.own) : unitAt(w, 0);
   if (own && !own.dead) { pick(own.id); return; }
-  if (!U.mode && !U.picked.size) {                         // hors ordres : toucher une cible montre comment faire
+  if (!U.mode && !U.picked.size) {                         // hors ordres : toucher sa catapulte la fait changer de poste ;
+    if (cataAt(w, 0)) { cataToggle(); return; }            // toucher une cible montre comment faire
     if (targetAt(w)) say('Touche d\'abord un de tes animaux', 1.6);
     return;
   }
@@ -349,22 +402,30 @@ function cardMove(d, p) {
   if (!d.moved && Math.hypot(p.x - d.sx, p.y - d.sy) > 14) d.moved = true;
   d.onField = d.moved && p.y < FH - 20;
   if (!d.onField) return;
-  const b = B.b, card = handOf(b, 0)[d.slot], w = V.worldAt(p.x, Math.min(p.y - 36, FH - 50));
-  let x = w.x, y = w.y, zone = canDeploy(b, 0, x, y);
-  if (!zone) { const q = clampDeploy(b, 0, x, y); if (Math.hypot(q.x - x, q.y - y) <= 1.6 * TILE) { x = q.x; y = q.y; zone = true; } }
+  const b = B.b, card = handOf(b, 0)[d.slot], id = card ? card.id : null, w = V.worldAt(p.x, Math.min(p.y - 36, FH - 50));
+  let x = w.x, y = w.y, zone = canDeploy(b, 0, x, y, id);
+  if (!zone) { const q = clampDeploy(b, 0, x, y, id); if (Math.hypot(q.x - x, q.y - y) <= (isSwim(id) ? 2.2 : 1.6) * TILE) { x = q.x; y = q.y; zone = true; } }
   d.x = x; d.y = y; d.ok = !!card && zone && b.players[0].aura >= card.cost;
 }
 function cardUp(d, e) {
   U.drag = null;
   if (e.type === 'pointercancel') return;
-  if (!d.moved) { U.sel = U.sel === d.slot ? -1 : d.slot; if (U.sel >= 0) { setMode(false); say('Touche ta zone bleue pour le poser', 2.2); } return; }
+  if (!d.moved) { U.sel = U.sel === d.slot ? -1 : d.slot; if (U.sel >= 0) { setMode(false); say(isSwim(d.id) ? 'Touche l\'eau de ton camp pour le poser' : 'Touche ta zone bleue pour le poser', 2.2); } return; }
   if (d.onField) tryDeploy(d.slot, d.x, d.y);
 }
 
 // ---------- ce qui se passe en combat : effets et sons ----------
 const BIG = { gorilla: 1, elephant: 1, rhino: 1, alligator: 1 };
-const SPARK = { kitten: 'pink_burst', monkey: 'arc_yellow', bulldog: 'claw_red', pig: 'burst_rocks', orang: 'burst_rocks', alligator: 'claw_yellow', eagle: 'slash_red', gorilla: 'burst_yellow', rhino: 'burst_rocks', elephant: 'burst_rocks' };
-const SPECIAL_SFX = { monkey: 'whoosh', bulldog: 'whoosh', pig: 'poison', alligator: 'whoosh', gorilla: 'slam', rhino: 'shield', elephant: 'splash', kitten: 'shield', orang: 'shield' };
+const SPARK = { kitten: 'pink_burst', monkey: 'arc_yellow', bulldog: 'claw_red', pig: 'burst_rocks', orang: 'burst_rocks', alligator: 'claw_yellow', eagle: 'slash_red', gorilla: 'burst_yellow', rhino: 'burst_rocks', elephant: 'burst_rocks',
+  octo: 'claw_red', dolphin: 'ring_blue', clownfish: 'ring_blue' };
+const SPECIAL_SFX = { monkey: 'whoosh', bulldog: 'whoosh', pig: 'poison', alligator: 'whoosh', gorilla: 'slam', rhino: 'shield', elephant: 'splash', kitten: 'shield', orang: 'shield', octo: 'whirlpool', dolphin: 'dolphin_jump', clownfish: 'bubbles' };
+// tirs des nageurs : le bruit du départ, puis de l'arrivée
+const WATER_SHOT = { bubble: ['bubbles', 0.3, 1.35], bubbles: ['bubbles', 0.55, 1], waterball: ['water_spit', 0.6, 1], wave: ['wave', 0.75, 1] };
+const WATER_LAND = { bubble: ['bubble_pop', 0.45, 5], bubbles: ['bubble_pop', 0.6, 9], waterball: ['splash', 0.45, 10], wave: ['splash', 0.7, 16] };
+// gerbe de gouttes (quand quelque chose tombe ou frappe dans l'eau)
+function droplets(x, y, n, sp = 1, col = '190,232,255') {
+  for (let i = 0; i < n; i++) { const an = rand(0, 6.283), v = rand(30, 90) * sp; V.dot(x + Math.cos(an) * 5, y - 4, { vx: Math.cos(an) * v, vy: Math.sin(an) * v * 0.4 - rand(70, 140) * sp, g: 480, life: rand(0.4, 0.7), r: rand(1.2, 2.4), col }); }
+}
 const BONUS_TXT = { monkey: ['SINGE EN RENFORT !', 'Un singe de plus dans ta troupe'], kitten: ['CHATON EN RENFORT !', 'Un chaton soigneur de plus'], fruit: ['FRUITS !', 'Tes animaux autour reprennent des forces'],
   rage: ['RAGE !', `+${Math.round(BONUS_FX.rage.dmg * 100)} % de dégâts pendant ${BONUS_FX.rage.dur} s`], aura: ['+' + BONUS_FX.aura + ' AURA', 'De l\'Aura en plus pour poser'] };
 const voiceT = {};
@@ -384,31 +445,41 @@ function onEvents(evs) {
   for (const e of evs) {
     switch (e.type) {
       case 'deploy':       // l'animal tombe du ciel : le bruit de l'atterrissage suit de peu (la poussière est dessinée par la vue)
-        snd('deploy', e.x, e.y, e.side === 0 ? 0.8 : 0.5);
-        if (BIG[e.id]) snd('chest_thud', e.x, e.y, 0.55, { at: 0.2 });
-        V.fx(e.side === 0 ? 'ring_blue' : 'ring_red', e.x, e.y + 2, { s0: 0.2, s1: 0.62, life: 0.45, flat: 0.55, a: 0.9 });
+        if (e.swim) {      // un nageur plonge dans l'eau de son camp (les ronds dans l'eau sont dessinés par la vue)
+          snd('splash_in', e.x, e.y, e.side === 0 ? 0.8 : 0.5); droplets(e.x, e.y, 14, 1.1);
+          V.fx(e.side === 0 ? 'ring_blue' : 'ring_red', e.x, e.y + 2, { s0: 0.2, s1: 0.62, life: 0.45, flat: 0.55, a: 0.65 });
+          tipOnce('swim' + e.side, e.side === 0 ? 'Tes nageurs ne craignent que les volants et les nageurs' : 'Un nageur adverse ! Seuls les volants et les nageurs le touchent', 3.2);
+        } else {
+          snd('deploy', e.x, e.y, e.side === 0 ? 0.8 : 0.5);
+          if (BIG[e.id]) snd('chest_thud', e.x, e.y, 0.55, { at: 0.2 });
+          V.fx(e.side === 0 ? 'ring_blue' : 'ring_red', e.x, e.y + 2, { s0: 0.2, s1: 0.62, life: 0.45, flat: 0.55, a: 0.9 });
+        }
         if (e.side === 1 && !seen(e.x, e.y)) V.ping(e.x, e.y, '#ff6a5a');
         if (e.side === 0) { const tip = B.tips.find((x) => x[1].startsWith('Touche un')); if (tip && tip[0] > b.t + 3) { tip[0] = b.t + 3; B.tips.sort((p, q) => p[0] - q[0]); } }
         break;
       case 'arrive': voice(e.id, 0.5); break;
       case 'attack':
-        if (e.special) { snd(SPECIAL_SFX[e.id] || 'whoosh', e.x, e.y, 0.8); voice(e.id, 0.6); }
+        if (e.special) { snd(SPECIAL_SFX[e.id] || 'whoosh', e.x, e.y, 0.8); voice(e.id, 0.6); if (e.swim) droplets(e.x, e.y, 8); }
         else if (e.heal) snd('heal', e.x, e.y, 0.25, { rate: 1.3 });
+        else if (e.swim) snd('swish', e.x, e.y, 0.3, { rate: 0.75 });
         else snd('swish', e.x, e.y, e.id === 'kitten' ? 0.35 : 0.45, { rate: e.id === 'kitten' ? 1.5 : rand(0.85, 1.15) });
         if (e.charge) { snd('hit_heavy2', e.x, e.y, 0.9); shake(e.x, e.y, 10); }
         break;
       case 'hit': {
-        if (e.kind === 'tower' || e.kind === 'crate' || e.kind === 'camp') {
-          const camp = e.kind === 'camp', y = e.y - (e.kind === 'tower' ? 40 : camp ? 14 : 6) + rand(-10, 10), sx = e.x + rand(camp ? -40 : -18, camp ? 40 : 18);
+        if (e.kind === 'tower' || e.kind === 'crate' || e.kind === 'camp' || e.kind === 'cata') {
+          const camp = e.kind === 'camp', cata = e.kind === 'cata', y = e.y - (e.kind === 'tower' ? 40 : camp ? 14 : cata ? 4 : 6) + rand(-10, 10), sx = e.x + rand(camp ? -40 : -18, camp ? 40 : 18);
           if (!e.splash && e.by) V.fx(SPARK[e.by] || 'burst_yellow', sx, y, { s0: 0.22, s1: 0.5, life: 0.25, rot: rand(-0.5, 0.5) });
-          if (e.kind === 'crate') { if (!e.splash) { snd('hit', e.x, e.y, 0.5, { rate: rand(0.6, 0.75) }); V.burst('planks', e.x, e.y - 14, 1, { s: 0.1, sp0: 80, sp1: 200, up: 160, g: 900 }); } }
-          else if (!e.splash) { snd('tower_hit', e.x, e.y, 0.55); if (Math.random() < 0.4) V.burst(camp ? 'planks' : 'rocks', sx, y, 1, { s: 0.1, sp0: 80, sp1: 200, up: 160, g: 900 }); }
+          if (e.kind === 'crate' || cata) { if (!e.splash) { snd(e.by === 'octo' ? 'tentacle' : 'hit', e.x, e.y, 0.5, { rate: rand(0.6, 0.75) }); V.burst('planks', e.x, e.y - 14, 1, { s: 0.1, sp0: 80, sp1: 200, up: 160, g: 900 }); } }
+          else if (!e.splash) { snd(e.by === 'octo' ? 'tentacle' : 'tower_hit', e.x, e.y, 0.55); if (Math.random() < 0.4) V.burst(camp ? 'planks' : 'rocks', sx, y, 1, { s: 0.1, sp0: 80, sp1: 200, up: 160, g: 900 }); }
           if (camp && e.side === 0 && !seen(e.x, e.y) && every('campHit', 4)) { V.ping(e.x, e.y, '#ff5a4a'); say('Ton camp est attaqué !', 1.8); }
+          if (cata && e.side === 0 && !seen(e.x, e.y) && every('cataHit', 5)) { V.ping(e.x, e.y, '#ff5a4a'); say('Ta catapulte est attaquée !', 1.8); }
+          if (camp && e.side === 0 && every('campAngry', 9)) V.trainerAct(0, 'angry', 1.4);
           break;
         }
         const ent = b.ents.get(e.id), y = midY(e.id, e.x, e.y, e.air);
         if (e.shield) { V.fx('shield', e.x, y, { s0: 0.12, s1: 0.22, life: 0.3, a: 0.8 }); if (every('sh' + e.id, 0.4)) snd('shield', e.x, e.y, 0.3, { rate: 1.5 }); break; }
         if (e.dot) { if (seen(e.x, e.y) && every('dot' + e.id, 0.9)) V.text('-' + e.amount, e.x + rand(-10, 10), y - 14, { size: 18, tint: 'green', life: 0.6 }); break; }
+        if (e.swim && !e.splash) droplets(e.x, e.y, 5, 0.8);          // un nageur touché : l'eau gicle
         if (e.splash && !e.by) break;
         if (!e.by) { V.fx('smoke_puff', e.x + rand(-5, 5), y, { s0: 0.12, s1: 0.3, life: 0.3, a: 0.8 }); snd('hit', e.x, e.y, 0.3, { rate: 1.3 }); break; }
         if (e.splash) { V.fx('star_big', e.x, y, { s0: 0.08, s1: 0.2, life: 0.14, add: true, a: 0.7 }); break; }
@@ -417,38 +488,62 @@ function onEvents(evs) {
         V.fx('star_big', e.x + rand(-4, 4), y, { s0: 0.1, s1: heavy ? 0.5 : 0.32, life: 0.16, add: true, a: 0.9, rot: rand(0, 3) });
         if (heavy) { snd(['hit_heavy', 'hit_heavy2', 'hit_heavy3'][Math.floor(Math.random() * 3)], e.x, e.y, 0.75); shake(e.x, e.y, 6); }
         else if (e.by === 'bulldog' || e.by === 'alligator') snd('bite', e.x, e.y, 0.6);
+        else if (e.by === 'octo') snd('tentacle', e.x, e.y, 0.65, { rate: rand(0.9, 1.1) });
         else snd(['hit', 'hit2', 'hit3', 'hit4'][Math.floor(Math.random() * 4)], e.x, e.y, 0.7);
         if (ent && ent.kind === 'unit' && (e.amount > ent.maxHp * 0.25 || e.by === 'alligator')) V.text('-' + e.amount, e.x, y - 18, { size: e.by === 'alligator' ? 26 : 22, tint: ent.side === 0 ? 'red' : 'yellow', life: 0.7 });
         break;
       }
-      case 'gauge': {        // la cible est frappée : le liquide part vers le bocal du camp qui frappe
-        const [jx, jy] = JAR[e.side], col = e.side === 0 ? '90,190,255' : '255,96,70', n = e.splash ? 1 : 1 + Math.min(3, Math.floor(e.g * 2));
-        for (let i = 0; i < n; i++) V.dot(e.x + rand(-10, 10), e.y - 14 + rand(-8, 8), { vx: rand(-90, 90), vy: rand(-150, -70), life: 0.75, r: 2.4, col, tx: jx + rand(-8, 8), ty: jy, add: true, delay: i * 0.04 });
-        if (!e.splash) {
-          V.fx(SPARK[e.by] || 'burst_yellow', e.x + rand(-14, 14), e.y - 10 + rand(-8, 8), { s0: 0.2, s1: BIG[e.by] ? 0.6 : 0.42, life: 0.24, rot: rand(-0.5, 0.5) });
-          snd(BIG[e.by] ? 'hit_heavy' : ['hit', 'hit2', 'hit3'][Math.floor(Math.random() * 3)], e.x, e.y, 0.55);
-          if (every('tg', 0.25)) snd('tower_hit', e.x, e.y, 0.35, { rate: e.side === 0 ? 1.25 : 1.05 });
-        }
-        V.mapfx.excite(0.25);
-        const g = b.players[e.side].gauge, m = Math.min(3, Math.floor(g / 25));
-        if (!b.camps && m > B.mile[e.side]) {
-          B.mile[e.side] = m;
-          V.banner((e.side === 0 ? 'TA JAUGE : ' : 'JAUGE ROUGE : ') + m * 25 + ' %', { size: 78, tint: e.side === 0 ? 'blue' : 'red', life: 1.4, y: 560 });
-          play(e.side === 0 ? 'surge' : 'horn', { v: 0.5 }); V.mapfx.excite(1);
-        }
-        break;
-      }
       case 'shot': { const v = V.svis.get(e.tid); if (v) v.throwT = 0; snd('whoosh', e.x, e.y, 0.4, { rate: 0.7 }); break; }
-      case 'catapult': {      // mode camps : la charge est pleine, la machine du centre lance un rocher sur le camp adverse
+      // ---- les catapultes ----
+      case 'cata_order':      // le dresseur l'envoie au centre (il encourage) ou la rappelle (il s'inquiète) ; le singe répond
+        V.trainerAct(e.side, e.want === 'centre' ? 'cheer' : 'worry', 1.6);
+        if (e.side === 0) snd('v_tuto', e.x, e.y, 0.6, { at: 0.12, rate: rand(0.95, 1.08) });
+        break;
+      case 'cata_move':
+        snd('v_tuto', e.x, e.y, 0.35, { rate: 0.9 });       // (le bruit des roues : voir la boucle)
+        if (e.side === 1 && e.want === 'centre' && every('redGo', 20)) { V.ping(767, 470, '#ff5a4a'); if (!B.guide) say('La catapulte rouge part au centre !', 2.2); }
+        break;
+      case 'cata_arrive':
+        if (e.at === 'centre') {
+          snd('chest_thud', e.x, e.y, 0.5, { rate: 0.8 });
+          if (e.side === 0) { if (!B.guide) say('Ta catapulte est en place : elle tire sur le camp rouge', 2.8); }
+          else { V.ping(e.x, e.y, '#ff5a4a'); if (!B.guide && every('redHere', 25)) say('La catapulte rouge vise ton camp : casse-la !', 2.8); }
+        } else if (e.side === 0 && !B.guide) say('Ta catapulte garde ton camp', 1.8);
+        break;
+      case 'cata_wind': snd('cata_creak', e.x, e.y, e.atk ? 0.75 : 0.4, { rate: e.atk ? 0.9 : 1.15 }); break;
+      case 'cata_fire':       // au camp : une pierre sur qui approche
+        snd('cata_launch', e.x, e.y, 0.45, { rate: 1.25 });
+        V.fx('dust_ring', e.x, e.y + 50, { s0: 0.2, s1: 0.6, life: 0.4, flat: 0.55, a: 0.6 });
+        break;
+      case 'catapult': {      // depuis le centre, un gros rocher part vers le camp adverse
         const ours = e.side === 0;
-        snd('slam', e.x, e.y, 0.8); snd('whoosh', e.x, e.y, 0.9, { rate: 0.55, at: 0.05 });
-        V.fx('dust_ring', 767, 530, { s0: 0.4, s1: 1.3, life: 0.5, flat: 0.55, a: 0.8 });
-        V.burst('star_big', e.x, e.y, 8, { s: 0.18, sp0: 120, sp1: 300, up: 120, g: 400, add: true });
-        shake(e.x, e.y, 10); V.mapfx.excite(1);
-        V.banner(ours ? 'CATAPULTE !' : 'CATAPULTE ROUGE !', { size: ours ? 92 : 70, tint: ours ? 'blue' : 'red', life: 1.3, y: 560 });
+        snd('cata_launch', e.x, e.y, 0.95); snd('whoosh', e.x, e.y, 0.8, { rate: 0.55, at: 0.05 });
+        V.fx('dust_ring', e.x, e.y + 50, { s0: 0.3, s1: 1.1, life: 0.5, flat: 0.55, a: 0.8 });
+        V.burst('star_big', e.x, e.y, 6, { s: 0.16, sp0: 100, sp1: 260, up: 120, g: 400, add: true });
+        shake(e.x, e.y, 8); V.mapfx.excite(0.8);
+        if (ours) { if (every('cataBanner', 30)) V.banner('TIR DE CATAPULTE !', { size: 72, tint: 'blue', life: 1.2, y: 560 }); }
+        else if (!B.guide && every('redShot', 16)) say('La catapulte rouge tire sur ton camp !', 2.2);
         V.ping(e.tx, e.ty, ours ? '#5ac8ff' : '#ff5a4a');
         break;
       }
+      case 'cata_break': {    // cassée : le singe va la réparer (src/game/rt.js, updateCata)
+        const ours = e.side === 0;
+        snd('cata_break', e.x, e.y, 1); snd('tower_down', e.x, e.y, 0.45, { rate: 1.3 });
+        V.fx('explosion1', e.x, e.y - 30, { s0: 0.3, s1: 0.9, life: 0.5 });
+        V.burst('planks', e.x, e.y - 30, 9, { s: 0.18, sp0: 140, sp1: 380, up: 260, g: 1000 });
+        V.fx('dust_ring', e.x, e.y + 4, { s0: 0.3, s1: 1.1, life: 0.5, flat: 0.5, a: 0.85 });
+        shake(e.x, e.y, 12); V.mapfx.excite(0.8);
+        V.text('CATAPULTE CASSÉE !', e.x, e.y - 100, { size: 30, tint: ours ? 'red' : 'yellow', life: 1.5, pop: 1.3 });
+        V.trainerAct(e.side, 'angry', 1.8); V.trainerAct(1 - e.side, 'cheer', 1.4);
+        if (ours) { if (!B.guide) say('Ta catapulte est cassée : le singe la répare', 2.6); if (!seen(e.x, e.y)) V.ping(e.x, e.y, '#ff5a4a'); }
+        else play('crown', { v: 0.5, at: 0.2 });
+        break;
+      }
+      case 'cata_fixed':
+        snd('cata_ready', e.x, e.y, 0.8); snd('crown', e.x, e.y, 0.45, { at: 0.62, rate: 1.2 });
+        V.burst('star_big', e.x, e.y - 40, 8, { s: 0.14, sp0: 80, sp1: 220, up: 160, g: 300, add: true });
+        if (e.side === 0 && !B.guide) say('Ta catapulte est réparée !', 1.8);
+        break;
       case 'camp_down': {     // un camp est détruit : fin du combat
         const mx = e.x, my = e.side === 0 ? 900 : 60;
         snd('tower_down', e.x, e.y, 1); snd('slam', e.x, e.y, 0.9, { at: 0.1 }); play('crown', { at: 0.4, v: 0.8 });
@@ -461,6 +556,7 @@ function onEvents(evs) {
       case 'proj':
         if (e.key === 'rocks2') snd('whoosh', e.x, e.y, 0.4, { rate: 0.8 });
         else if (e.key === 'gust') snd('tornado', e.x, e.y, 0.35, { rate: 1.3 });
+        else if (WATER_SHOT[e.key]) { const [n, v, r] = WATER_SHOT[e.key]; snd(n, e.x, e.y, v, { rate: r * rand(0.92, 1.08) }); }
         break;
       case 'land':
         if (e.cata) {        // le rocher de la catapulte s'écrase sur le camp
@@ -470,14 +566,21 @@ function onEvents(evs) {
           V.burst('rocks', e.x, e.y - 10, 8, { s: 0.18, sp0: 160, sp1: 420, up: 260, g: 1000 }); V.burst('planks', e.x, e.y - 10, 6, { s: 0.16, sp0: 140, sp1: 380, up: 240, g: 1000 });
           V.fx('dust_ring', e.x, e.y + 6, { s0: 0.4, s1: 1.6, life: 0.55, flat: 0.5, a: 0.9 }); V.decal('crater2', e.x, e.y + 10, 6, 0.7);
           shake(e.x, e.y, 18); if (seen(e.x, e.y)) { V.flash = 0.25; V.flashColor = ours ? '150,210,255' : '255,110,90'; }
-          V.text('-' + Math.round(CAMPS.catapult.hit * 100) + ' %', e.x, e.y - 60, { size: 40, tint: ours ? 'yellow' : 'red', life: 1.3, pop: 1.4 });
+          V.text('-' + Math.round(CATA.atk.hit * 100) + ' %', e.x, e.y - 60, { size: 40, tint: ours ? 'yellow' : 'red', life: 1.3, pop: 1.4 });
+          V.trainerAct(1 - e.side, 'angry', 1.6);
           V.mapfx.excite(1.2);
-        } else if (e.key === 'rocks2') {
+        } else if (e.key === 'rocks2' || e.key === 'stone') {      // pierre d'une tour ou d'une catapulte qui garde son camp
           const big = e.tower ? 1.25 : 1;
           snd('rock', e.x, e.y, 0.8); V.fx('burst_rocks', e.x, e.y - 8, { s0: 0.25, s1: 0.62 * big, life: 0.3 });
           V.burst('rocks', e.x, e.y - 6, e.tower ? 6 : 4, { s: 0.12, sp0: 120, sp1: 260, up: 160, g: 900 }); V.decal('crater1', e.x, e.y + 3, 4, 0.32 * big); shake(e.x, e.y, e.tower ? 7 : 4);
           V.fx('dust_ring', e.x, e.y + 3, { s0: 0.2, s1: 0.7 * big, life: 0.4, flat: 0.55, a: 0.8 });
         } else if (e.key === 'hearts') V.fx('pink_burst', e.x, e.y - 14, { s0: 0.12, s1: 0.34, life: 0.25 });
+        else if (WATER_LAND[e.key]) {     // bulles et boules d'eau des nageurs : ça éclabousse (et ça fait des ronds si c'est dans l'eau)
+          const [n, v, k] = WATER_LAND[e.key];
+          snd(n, e.x, e.y, v, { rate: rand(0.9, 1.15) }); droplets(e.x, e.y, k, e.key === 'wave' ? 1.3 : 0.9);
+          if (e.key !== 'bubble') V.fx('ring_blue', e.x, e.y + 2, { s0: 0.15, s1: e.key === 'wave' ? 0.8 : 0.45, life: 0.4, flat: 0.55, a: 0.8 });
+          if (e.swim || swimmable(e.x, e.y)) { V.ripple(e.x, e.y + 2, 10, 0.8, 0.7); V.ripple(e.x, e.y + 2, 18, 1.1, 0.45); }
+        }
         break;
       case 'miss': V.fx('smoke_puff', e.x, e.y - 4, { s0: 0.08, s1: 0.2, life: 0.3, a: 0.6 }); break;
       case 'splash':
@@ -560,9 +663,9 @@ function onEvents(evs) {
         break;
       }
       case 'crate_spawn': if (seen(e.x, e.y)) { V.fx('smoke_puff', e.x, e.y - 10, { s0: 0.2, s1: 0.6, life: 0.5, a: 0.8 }); V.burst('star_big', e.x, e.y - 20, 4, { s: 0.1, sp0: 60, sp1: 160, up: 100, g: 200, add: true }); snd('chest_land', e.x, e.y, 0.3); } break;
-      case 'tower_take': {      // la cage cède : l'orang-outan est libre et se bat pour ce camp
+      case 'tower_take': {      // la tour change de camp : son singe lance désormais ses pierres pour le camp qui l'a prise
         const ours = e.side === 0, top = e.topY;
-        snd('tower_down', e.x, e.y, 0.9); play('crown', { at: 0.35, v: 0.8 }); voice('orang', 0.85);
+        snd('tower_down', e.x, e.y, 0.9); play('crown', { at: 0.35, v: 0.8 }); voice('monkey', 0.85);
         V.fx('explosion2', e.x, top - 6, { s0: 0.4, s1: 1.2, life: 0.7 }); V.fx('explosion1', e.x + 20, top - 20, { s0: 0.3, s1: 0.8, life: 0.6, delay: 0.12 });
         V.burst('planks', e.x, top, 8, { s: 0.2, sp0: 160, sp1: 420, up: 260, g: 1000 }); V.burst('rocks', e.x, top, 6, { s: 0.16, sp0: 160, sp1: 400, up: 260, g: 1000 });
         V.burst('star_big', e.x, top - 10, 12, { s: 0.22, sp0: 200, sp1: 520, up: 200, g: 500, add: true });
@@ -577,8 +680,13 @@ function onEvents(evs) {
       case 'death': {
         snd('ko', e.x, e.y, 0.7);
         const y = e.y - (e.air ? LIFT : 0), big = BIG[e.id] ? 1.25 : 1;
-        V.fx('ko_cloud', e.x, y - 22 * big, { s0: 0.22, s1: 0.56 * big, life: 0.7, fade: 0.3 });
-        for (let i = 0; i < 5; i++) { const an = rand(0, 6.283); V.fx('smoke_puff', e.x + Math.cos(an) * 8, y - 12 + Math.sin(an) * 5, { vx: Math.cos(an) * rand(50, 120), vy: Math.sin(an) * rand(30, 70) - 40, s0: 0.14, s1: 0.4 * big, life: rand(0.4, 0.65), a: 0.7, fade: 0.6, delay: 0.04 }); }
+        if (e.swim) {        // un nageur K.-O. coule (la vue le fait couler dans des bulles) : gerbe d'eau
+          snd('splash', e.x, e.y, 0.55, { rate: 0.8 }); droplets(e.x, e.y, 16, 1.2);
+          V.fx('ring_blue', e.x, e.y + 2, { s0: 0.25, s1: 0.75, life: 0.55, flat: 0.55, a: 0.85 });
+        } else {
+          V.fx('ko_cloud', e.x, y - 22 * big, { s0: 0.22, s1: 0.56 * big, life: 0.7, fade: 0.3 });
+          for (let i = 0; i < 5; i++) { const an = rand(0, 6.283); V.fx('smoke_puff', e.x + Math.cos(an) * 8, y - 12 + Math.sin(an) * 5, { vx: Math.cos(an) * rand(50, 120), vy: Math.sin(an) * rand(30, 70) - 40, s0: 0.14, s1: 0.4 * big, life: rand(0.4, 0.65), a: 0.7, fade: 0.6, delay: 0.04 }); }
+        }
         V.burst('star_big', e.x, y - 16, 5, { s: 0.16, sp0: 120, sp1: 300, up: 120, g: 500, add: true });
         if (e.air) V.burst('feather' + (1 + Math.floor(Math.random() * 3)), e.x, y - 22, 4, { s: 0.16, sp0: 40, sp1: 140, up: 60, g: 120, life: 1.6 });
         if (e.side === 1) V.fx('paw_burst', e.x, y - 38, { s0: 0.16, s1: 0.36, life: 0.8, vy: -110, fade: 0.3 });
@@ -588,10 +696,11 @@ function onEvents(evs) {
       }
       case 'double': V.banner('AURA x2 !', { size: 120, tint: 'pink', life: 1.8, y: 680 }); play('surge'); V.mapfx.excite(1); break;
       case 'overtime':
-        V.banner('MORT SUBITE !', { size: 104, tint: 'orange', life: 2.2, y: 650 }); V.banner(b.camps ? 'Le premier camp touché perd' : 'Le prochain coup sur la cible gagne', { size: 42, tint: 'white', life: 2.2, y: 750, delay: 0.3 });
+        V.banner('MORT SUBITE !', { size: 104, tint: 'orange', life: 2.2, y: 650 }); V.banner('Le premier camp touché perd', { size: 42, tint: 'white', life: 2.2, y: 750, delay: 0.3 });
         play('overtime'); V.mapfx.excite(1.6);
         break;
-      case 'order':
+      case 'order':        // le petit dresseur de chaque camp donne l'ordre : il encourage (attaque) ou s'inquiète (repli)
+        if (!e.free) V.trainerAct(e.side, e.home ? 'worry' : 'cheer', e.home ? 1.8 : e.ref ? 1.5 : 1);
         if (e.side === 0) {
           if (e.home) { play('whistle'); V.banner('', { img: 'order_whistle', life: 1.1, y: 1250, s: 0.62 }); }
           else if (e.free) play('horn', { v: 0.5, rate: 1.25 });
@@ -625,14 +734,31 @@ function loop(now) {
   if (U.mode && !U.picked.size && !U.pickNew) U.pickNew = true;
   // la carte lancée glisse encore un peu
   if (U.fling) { V.panBy(U.fling.vx * dt, U.fling.vy * dt); const k = Math.pow(0.02, dt); U.fling.vx *= k; U.fling.vy *= k; if (Math.hypot(U.fling.vx, U.fling.vy) < 20) U.fling = null; }
-  // une carte ou une flèche tenue près du bord fait défiler l'arène
+  // une carte ou une flèche tenue près du bord fait défiler l'arène. Sur les côtés, plus on la tient au bord, plus ça va
+  // vite (la flèche d'un ordre d'attaque surtout : sa cible peut être à l'autre bout de l'arène) ; près du bord du haut aussi.
   const edge = U.drag && U.drag.onField ? U.drag.p : U.aim && U.g && U.g.p ? U.g.p : null;
+  let held = false;
   if (edge) {
-    const m = 100, sp = 560 * dt; let dx = 0, dy = 0;
-    if (edge.x < m) dx = sp * (1 - edge.x / m); else if (edge.x > W - m) dx = -sp * (1 - (W - edge.x) / m);
-    if (edge.y < 260) dy = sp * Math.min(1, (260 - edge.y) / 160);
+    const aim = !U.drag, m = aim ? 130 : 100, base = (aim ? 720 : 560) * dt;
+    const boost = 1 + (aim ? 2.6 : 1.4) * Math.min(1, U.edgeT / 0.7);      // jusqu'à 3,6 fois plus vite (2,4 avec une carte)
+    let dx = 0, dy = 0;
+    if (edge.x < m) dx = base * boost * (1 - edge.x / m); else if (edge.x > W - m) dx = -base * boost * (1 - (W - edge.x) / m);
+    if (edge.y < 260) dy = base * Math.min(1, (260 - edge.y) / 160);
+    if (dx) { held = true; U.edgeT += dt; }
     if (dx || dy) { V.panBy(dx, dy); if (U.drag) cardMove(U.drag, edge); else aimAt(edge); }
   }
+  if (!held) U.edgeT = 0;
+  // le bruit de la rivière, plus fort quand la caméra est près de l'eau ; les roues des catapultes qui roulent
+  if (B.amb && every('amb', 0.25)) B.amb.set(b.over ? 0.12 : 0.22 + 0.3 * Math.max(0, 1 - Math.abs(V.cam.y - 500) / 420));
+  for (const k of b.catas) {
+    if (k.moving && every('roll' + k.side, 2.4)) snd('cata_roll', k.x, k.y, 0.5);
+    else if (k.dead) {           // le singe tape pour la réparer : un coup de marteau à chaque coup dessiné (drawMonkey, src/render/view.js)
+      const ph = (V.time * 2.8 + k.side * 0.3) % 1, was = B.ham[k.side]; B.ham[k.side] = ph;
+      if (was < 0.55 && ph >= 0.55 && seen(k.x, k.y)) snd('hammer', k.x, k.y, 0.32, { rate: rand(0.92, 1.1) });
+    }
+  }
+  if (B.cataGlow > 0) B.cataGlow -= dt;
+  if (B.guide && !b.over) B.guide.tick(dt);
   // les dix dernières secondes : tic-tac, la foule s'enflamme
   const sec = Math.ceil(b.clock);
   if (!b.over && sec !== B.sec) {
@@ -644,19 +770,18 @@ function loop(now) {
   if (U.zoneT > 0) U.zoneT -= dt;
   if (B.tips.length && !U.hint && b.t >= B.tips[0][0] && !b.over) say(B.tips.shift()[1], 3.2);
   const zone = !!(U.drag && U.drag.onField) || U.sel >= 0 || U.zoneT > 0;
-  V.draw(dt, b, { alpha: B.acc / TICK, drag: U.drag, sel: U.drag ? U.drag.slot : U.sel, opp: B.opp, hint: U.hint, zone, mode: U.mode, picked: U.picked, aim: U.aim, hover: U.hover });
+  V.draw(dt, b, { alpha: B.acc / TICK, drag: U.drag, sel: U.drag ? U.drag.slot : U.sel, opp: B.opp, hint: U.hint, zone, zoneSwim: zone && swimCard(), mode: U.mode, picked: U.picked, aim: U.aim, hover: U.hover, cataGlow: B.cataGlow > 0 });
   if (b.over && !B.endShown) {
     if (!B.party) {
       B.party = true; U.sel = -1; U.drag = null; setMode(false); U.hint = '';
       const win = b.winner === 0, draw = b.winner === -1;
       music(null);
       if (b.why === 'camp') V.lookAt(767, win ? 240 : 790, ZOOM.start);      // le camp qui vient de tomber
-      else V.lookAt(767, 600, ZOOM.start);       // tout le monde regarde les jauges
-      if (b.why === 'full') V.banner(win ? 'JAUGE PLEINE !' : 'JAUGE ROUGE PLEINE', { size: 90, tint: win ? 'blue' : 'red', life: 1.2, y: 560 });
+      else V.lookAt(767, 512, ZOOM.min);         // toute l'arène
       if (b.why === 'camp') V.banner(win ? 'CAMP DÉTRUIT !' : 'TON CAMP EST TOMBÉ', { size: 90, tint: win ? 'blue' : 'red', life: 1.2, y: 560 });
       if (win) { sfx.win(); for (let i = 0; i < 4; i++) V.burst('confetti', rand(150, 790), rand(250, 500), 10, { s: 0.5, sp0: 120, sp1: 420, up: 300, g: 420, life: 2.2, delay: i * 0.12, top: true }); V.burst('star_big', 470, 700, 14, { s: 0.4, sp0: 200, sp1: 520, up: 200, life: 1.6, top: true }); }
       else if (!draw) sfx.lose(); else play('overtime', { v: 0.6 });
-      V.banner(win ? 'VICTOIRE !' : draw ? 'ÉGALITÉ' : 'DÉFAITE', { size: 140, tint: win ? 'yellow' : draw ? 'white' : 'red', life: 2.4, y: 700, delay: b.why === 'full' || b.why === 'camp' ? 0.5 : 0 });
+      V.banner(win ? 'VICTOIRE !' : draw ? 'ÉGALITÉ' : 'DÉFAITE', { size: 140, tint: win ? 'yellow' : draw ? 'white' : 'red', life: 2.4, y: 700, delay: b.why === 'camp' ? 0.5 : 0 });
       V.mapfx.excite(1.6);
     }
     if (b.endT > (TEST ? 0.3 : 2.8)) { B.endShown = true; finish(); }
@@ -666,13 +791,19 @@ function loop(now) {
 // ---------- fin du combat ----------
 function finish() {
   const b = B.b, ranked = B.mode === 'ranked', res = summary(b, 0);
-  if (b.camps) S.campFights = (S.campFights || 0) + 1;      // pour les astuces du mode camps (voir tipsFor)
+  if (B.amb) { B.amb.stop(); B.amb = null; }
+  if (B.mode === 'demo') {        // combat du tutoriel : ni trophées ni récompenses ici, le tutoriel prend la suite (coffre en bois)
+    const guide = B.guide; leave(false);
+    if (guide) guide.done(res); else showMenu('main');
+    return;
+  }
+  S.cataFights = (S.cataFights || 0) + 1;      // pour les astuces des catapultes (voir tipsFor)
   const out = applyFight(res, B.opp, ranked);
   if (B.opp.uid) Net.report(B.opp.uid, res.win, !ranked);
   Net.pushProfile();
   showEnd(res, out, ranked);
 }
-const WHY = { full: 'Jauge remplie !', camp: 'Camp détruit !', time: 'Fin du temps', overtime: 'Mort subite', tie: 'Égalité : départage aux tours, puis aux K.-O.', forfeit: 'Abandon' };
+const WHY = { camp: 'Camp détruit !', time: 'Fin du temps', overtime: 'Mort subite', tie: 'Égalité : départage aux tours, puis aux K.-O.', forfeit: 'Abandon' };
 function showEnd(res, out, ranked) {
   const r = out.rewards, win = res.win;
   const POS = win ? { coin: 262, xp: 443, ruby: 620, btn: 442 } : { coin: 245, xp: 426, ruby: 603, btn: 428 };
@@ -683,12 +814,13 @@ function showEnd(res, out, ranked) {
   const lines = [];
   if (ranked && r.trophies) lines.push(`<span class="${r.trophies > 0 ? 'good' : 'bad'}">${r.trophies > 0 ? '+' : ''}${r.trophies}</span><i class="ico trophy"></i>`);
   if (r.paws) lines.push(`+${r.paws}<i class="ico paw"></i>`);
-  // pourcentages entiers, sauf si les deux jauges ont le même entier (on montre alors la décimale qui les départage)
+  // pourcentages entiers, sauf si les deux nombres ont le même entier (on montre alors la décimale qui les départage)
   const same = Math.floor(res.gauge) === Math.floor(res.foeGauge) && res.gauge !== res.foeGauge, pc = (g) => (same ? String(g.toFixed(1)).replace('.', ',') : Math.floor(g)) + ' %';
-  // mode camps : gauge = part du camp adverse détruite, foeGauge = part du nôtre
-  const extra = [`${res.mode === 'camps' ? 'Camps détruits à' : 'Jauges :'} <span class="blue">${pc(res.gauge)}</span> contre <span class="bad">${pc(res.foeGauge)}</span> · ${WHY[res.why] || ''}`];
+  // gauge = part du camp adverse détruite, foeGauge = part du nôtre
+  const extra = [`Camps détruits à <span class="blue">${pc(res.gauge)}</span> contre <span class="bad">${pc(res.foeGauge)}</span> · ${WHY[res.why] || ''}`];
   const bits = [];
   if (res.shots) bits.push(res.shots > 1 ? res.shots + ' tirs de catapulte' : '1 tir de catapulte');
+  if (res.breaks) bits.push(res.breaks > 1 ? res.breaks + ' catapultes cassées' : '1 catapulte cassée');
   if (res.towers) bits.push(res.towers > 1 ? res.towers + ' tours tenues' : '1 tour tenue');
   if (res.crates) bits.push(res.crates > 1 ? res.crates + ' boîtes cassées' : '1 boîte cassée');
   if (res.kos) bits.push(res.kos + ' K.-O.');
@@ -697,8 +829,8 @@ function showEnd(res, out, ranked) {
   if (r.streakBonus) extra.push(`Série de ${out.streak} victoires : +${fmt(r.streakBonus)}<i class="ico coin"></i>`);
   if (out.firstWin) extra.push('Première victoire du jour : +5<i class="ico ruby"></i>');
   if (out.full) extra.push('<span class="bad">Tes 4 emplacements de cages sont pleins !</span>');
-  if (!win && !res.draw) extra.push(S.lossRun >= 2 ? 'Astuce : améliore tes animaux dans la Collection.' : res.towers === 0 ? 'Astuce : prends une tour, son orang-outan t\'aidera !'
-    : res.mode === 'camps' ? (res.shots ? 'Astuce : passe par un flanc pour surprendre le camp adverse !' : 'Astuce : frappe la machine du centre, elle tire sur le camp adverse !') : 'Astuce : frappe la cible du centre pour remplir ta jauge !');
+  if (!win && !res.draw) extra.push(S.lossRun >= 2 ? 'Astuce : améliore tes animaux dans la Collection.' : !res.shots ? 'Astuce : envoie ta catapulte au centre, elle tirera sur le camp adverse !'
+    : res.towers === 0 ? 'Astuce : prends une tour, son singe lancera des pierres pour toi !' : !res.breaks ? 'Astuce : casse la catapulte adverse quand elle vient au centre !' : 'Astuce : passe par un flanc pour surprendre le camp adverse !');
   const chestEl = out.chest ? h('div', { class: 'end-chest' }, h('img', { src: `assets/chests/icon_${out.chest.tier}.webp`, alt: '' }), h('div', { class: 't sm' }, CHESTS[out.chest.tier].name + ' gagnée !')) : null;
   const el = h('div', { class: 'veil end' }, h('div', { class: 'end-top t', html: lines.join('   ') }), panel, chestEl, h('div', { class: 'end-extra t xs', html: extra.join('<br>') }));
   $('modals').append(el);
@@ -727,11 +859,14 @@ function showEnd(res, out, ranked) {
     if (r.rubies) fly('ruby', [470, 900], TARGET.ruby, 3);
   }
 }
-function leave() {
+function leave(menu = true) {
+  if (B && B.amb) B.amb.stop();
   cancelAnimationFrame(raf); raf = 0; B = null; busy = false;
   $('scrBattle').hidden = true; $('bHud').textContent = '';
-  showMenu('main');
+  if (menu) showMenu('main');
 }
+// Le murmure de la rivière pendant tout le combat (src/core/audio.js, ambience)
+function startAmbience() { B.amb = ambience('river', 0.3); }
 export const battleState = () => B;      // pour les tests automatiques
 export const battleView = () => V;
 export const battleUi = () => U;

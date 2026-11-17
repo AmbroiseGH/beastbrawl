@@ -11,10 +11,14 @@ const NAMES = ['arrow', 'bite', 'buy', 'card_flip', 'card_fly', 'chest_land', 'c
   'fight_start', 'gems', 'heal', 'hit', 'hit2', 'hit3', 'hit4', 'hit_heavy', 'hit_heavy2', 'hit_heavy3', 'horn', 'ko', 'levelup', 'main_down', 'new_card', 'no_aura', 'overtime',
   'poison', 'rev_common', 'rev_epic', 'rev_legendary', 'rev_rare', 'rev_ultimate', 'reward', 'rock', 'shield', 'slam', 'splash', 'surge', 'swish', 'target', 'tick', 'tornado',
   'tower_down', 'tower_hit', 'unlock', 'upgrade', 'v_alligator', 'v_bulldog', 'v_eagle', 'v_elephant', 'v_gorilla', 'v_kitten', 'v_monkey', 'v_orang', 'v_pig', 'v_rhino',
-  'victory', 'whistle', 'whoosh'];
+  'victory', 'whistle', 'whoosh',
+  // l'eau, les nageurs, les catapultes et leur singe
+  'river', 'splash_in', 'bubbles', 'bubble_pop', 'water_spit', 'wave', 'dolphin_jump', 'tentacle', 'whirlpool', 'v_octo', 'v_dolphin', 'v_clownfish',
+  'cata_creak', 'cata_launch', 'cata_roll', 'cata_break', 'cata_ready', 'hammer', 'v_tuto'];
 // volume propre à chaque son (les autres : 1)
-const GAIN = { click: 0.55, tick: 0.5, swish: 0.6, whoosh: 0.6, hit: 0.55, hit2: 0.55, hit3: 0.55, hit4: 0.55, arrow: 0.35, coins: 0.7, heal: 0.6, card_fly: 0.7, deploy: 0.75, tower_hit: 0.5, poison: 0.6, v_kitten: 0.8, v_monkey: 0.75 };
-const MIN_GAP = { hit: 0.05, hit2: 0.05, hit3: 0.05, hit4: 0.05, arrow: 0.07, tower_hit: 0.09, coins: 0.06, heal: 0.15, tick: 0.03 };
+const GAIN = { click: 0.55, tick: 0.5, swish: 0.6, whoosh: 0.6, hit: 0.55, hit2: 0.55, hit3: 0.55, hit4: 0.55, arrow: 0.35, coins: 0.7, heal: 0.6, card_fly: 0.7, deploy: 0.75, tower_hit: 0.5, poison: 0.6, v_kitten: 0.8, v_monkey: 0.75,
+  bubble_pop: 0.7, bubbles: 0.7, tentacle: 0.8, cata_roll: 0.7, hammer: 0.6, v_tuto: 0.8, v_clownfish: 0.8 };
+const MIN_GAP = { hit: 0.05, hit2: 0.05, hit3: 0.05, hit4: 0.05, arrow: 0.07, tower_hit: 0.09, coins: 0.06, heal: 0.15, tick: 0.03, bubble_pop: 0.06, bubbles: 0.12, tentacle: 0.07, water_spit: 0.08, splash: 0.06, cata_roll: 0.5 };
 
 function ensureCtx() {
   if (ctx) return ctx;
@@ -72,6 +76,26 @@ export function play(name, o = {}) {
   voices++; s.onended = () => { voices--; };
   s.start(now + (o.at || 0));
   return true;
+}
+
+// Un son qui tourne en boucle (le murmure de la rivière pendant un combat). Renvoie { set(v), stop() } ou null.
+// Les fichiers de boucle portent une marge de 100 ms de chaque côté (copie de l'autre bout) : on boucle entre les marges,
+// ce qui reste sans couture même si le décodeur MP3 du navigateur décale un peu le son. LOOPS : durée de la boucle (s).
+const LOOPS = { river: 8 };
+export function ambience(name, v = 0.5) {
+  if (!ctx || !BUF[name]) return null;
+  const s = ctx.createBufferSource(), g = ctx.createGain(), len = LOOPS[name];
+  s.buffer = BUF[name]; s.loop = true; g.gain.value = 0;
+  if (len && s.buffer.duration >= len + 0.15) { s.loopStart = 0.1; s.loopEnd = 0.1 + len; }
+  s.connect(g); g.connect(master);
+  try { s.start(0, len ? 0.1 : 0); } catch (e) { return null; }
+  let k = v, alive = true;
+  const level = () => k * (GAIN[name] || 1) * vol();
+  g.gain.setTargetAtTime(level(), ctx.currentTime, 0.6);
+  return {
+    set(nv) { if (!alive) return; k = nv; g.gain.setTargetAtTime(level(), ctx.currentTime, 0.4); },
+    stop() { if (!alive) return; alive = false; g.gain.setTargetAtTime(0, ctx.currentTime, 0.3); try { s.stop(ctx.currentTime + 1.5); } catch (e) { /* déjà arrêté */ } },
+  };
 }
 
 // Petit tintement de l'XP (synthétisé : lame de glockenspiel). step : 0, 1, 2… chaque pas monte d'une note de la gamme

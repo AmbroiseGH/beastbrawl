@@ -1,43 +1,49 @@
-// L'adversaire contrôlé par le jeu : il dépense son Aura comme un joueur, se bat pour la cible du centre, va chercher
-// les boîtes et les tours latérales, et donne des ordres à ses animaux (les bons adversaires seulement).
-// En mode camps, il défend aussi son camp, pousse parfois par un flanc et charge la catapulte quand le centre est libre.
+// L'adversaire contrôlé par le jeu : il dépense son Aura comme un joueur, se bat au centre, va chercher les boîtes et
+// les tours latérales, défend son camp, pousse parfois par un flanc, met ses nageurs à l'eau, décide où va sa catapulte
+// (défendre le camp ou tirer depuis le centre) et donne des ordres à ses animaux (les bons adversaires seulement).
 // skill va de 0 (débutant, lent et maladroit) à 1 (rapide et précis).
 import { ANIMALS } from '../data/animals.js';
-import { deploy, command, handOf, clampDeploy, deployZones, TILE, BASE, HOME_ZONE } from './rt.js';
+import { deploy, command, setCata, handOf, clampDeploy, deployZones, behind, TILE, BASE, HOME_ZONE, CATA_ROAD } from './rt.js';
 import { nearest } from './nav.js';
 
 const TANKS = ['bulldog', 'gorilla', 'rhino', 'elephant', 'orang'];
 const BACK = ['kitten', 'orang', 'eagle'];
-const BREAKERS = { monkey: 3, alligator: 3, pig: 2.2, gorilla: 2, rhino: 1.8, elephant: 1.6, bulldog: 1, eagle: 1, orang: 0.8, kitten: 0.2 };
+const BREAKERS = { monkey: 3, alligator: 3, pig: 2.2, gorilla: 2, rhino: 1.8, elephant: 1.6, bulldog: 1, eagle: 1, orang: 0.8, kitten: 0.2, clownfish: 0.4, octo: 0.5, dolphin: 0.6 };
+const CEN = { x: 767, y: 492 };                  // le milieu de l'île centrale, là où les catapultes viennent tirer
 
 export function makeAI(side, skill = 0.5, rng = Math.random) {
-  return { side, skill: Math.max(0, Math.min(1, skill)), rng, think: 1.2 + rng() * 2, plan: 'centre', planT: 6 + rng() * 6, lane: rng() < 0.5 ? 'L' : 'R', crateDone: false, microT: 3, campT: 0, push: '' };
+  return { side, skill: Math.max(0, Math.min(1, skill)), rng, think: 1.2 + rng() * 2, plan: 'centre', planT: 6 + rng() * 6, lane: rng() < 0.5 ? 'L' : 'R',
+    crateDone: false, microT: 3, campT: 0, cataT: 12 + rng() * 10 - 8 * skill, push: '', water: rng() < 0.5 ? 'L' : 'R' };
 }
-// Points de pose (côté rouge, en haut ; le côté bleu est le miroir) : bouche du pont central, bouts de la zone près des ponts latéraux
-const SPOT = { centre: [767, 262], L: [470, 262], R: [1064, 262], crateL: [505, 225], crateR: [1031, 225], back: [767, 205] };
+// Points de pose (côté rouge, en haut ; le côté bleu est le miroir) : bouche du pont central, bouts de la zone près des
+// ponts latéraux, et l'eau du camp de chaque côté pour les nageurs
+const SPOT = { centre: [767, 262], L: [470, 262], R: [1064, 262], crateL: [505, 225], crateR: [1031, 225], back: [767, 205], waterL: [600, 150], waterR: [936, 150] };
 const spot = (side, key) => { const [x, y] = SPOT[key]; return { x, y: side === 1 ? y : 1024 - y + 14 }; };
-// Mode camps : où s'arrête une poussée par un flanc (juste après le petit pont, chez l'adversaire) avant de foncer sur son camp
+// Une poussée par un flanc s'arrête juste après le petit pont, chez l'adversaire, avant de foncer sur son camp
 const WAY = { 1: { L: [427, 745], R: [1109, 745] }, 0: { L: [437, 262], R: [1099, 262] } };
 const way = (side, lane) => { const [x, y] = WAY[side][lane]; return nearest(x, y, [HOME_ZONE[1 - side]]) || { x, y }; };
 
 export function aiStep(b, ai, dt) {
   if (b.over) return;
-  ai.planT -= dt; ai.microT -= dt; ai.campT -= dt;
+  ai.planT -= dt; ai.microT -= dt; ai.campT -= dt; ai.cataT -= dt;
   ai.think -= dt; if (ai.think > 0) return;
   const { side, skill, rng } = ai;
   ai.think = 1.1 - 0.6 * skill + rng() * 0.5;
-  const p = b.players[side], foe = b.players[1 - side], hand = handOf(b, side), M = b.machine;
+  const p = b.players[side], hand = handOf(b, side);
   const mine = b.units.filter((u) => !u.dead && u.side === side), foes = b.units.filter((u) => !u.dead && u.side !== side);
   const weight = (list) => list.reduce((n, u) => n + ANIMALS[u.aid].cost * (u.hp / u.maxHp) / (ANIMALS[u.aid].count || 1), 0);
   const near = (list, x, y, r) => list.filter((u) => Math.hypot(u.x - x, u.y - y) < r * TILE);
   const playable = hand.map((c, i) => (c && c.cost <= p.aura ? { ...c, slot: i, a: ANIMALS[c.id] } : null)).filter(Boolean);
   const jitter = (k = 1) => (rng() - 0.5) * TILE * (2.4 - 1.6 * skill) * k;
   const put = (c, pos, ref) => {
-    const q = clampDeploy(b, side, pos.x + jitter(), pos.y + jitter(0.5)), n0 = b.nextId;
+    const q = clampDeploy(b, side, pos.x + jitter(), pos.y + jitter(0.5), c.id), n0 = b.nextId;
     if (deploy(b, side, c.slot, q.x, q.y)) return false;
     if (ref) command(b, side, b.units.filter((u) => u.id >= n0 && u.side === side).map((u) => u.id), { ref });
     return true;
   };
+  const swimmers = (list) => list.filter((u) => u.swim);
+  const myHalf = (u) => (side === 0 ? u.y > 512 : u.y < 512);
+  const hb = BASE[side], losing = behind(b, side) - behind(b, 1 - side);
 
   // ---------- ordres aux animaux déjà sur le terrain ----------
   if (ai.microT <= 0 && skill > 0.3) {
@@ -45,32 +51,43 @@ export function aiStep(b, ai, dt) {
     // un animal cher et très abîmé rentre se soigner à la tente, et repart une fois remis
     for (const u of mine) {
       const cost = ANIMALS[u.aid].cost, r = u.hp / u.maxHp, atHome = u.order && u.order.home;
-      if (!atHome && skill > 0.55 && cost >= 5 && r < 0.22 && Math.hypot(u.x - BASE[side].x, u.y - BASE[side].y) > 6 * TILE && rng() < 0.6) command(b, side, [u.id], { home: true });
-      else if (atHome && (r > 0.8 || foe.gauge > 80)) command(b, side, [u.id], null);
+      if (!atHome && skill > 0.55 && cost >= 5 && r < 0.22 && Math.hypot(u.x - hb.x, u.y - hb.y) > 6 * TILE && rng() < 0.6) command(b, side, [u.id], { home: true });
+      else if (atHome && (r > 0.8 || b.camps[1 - side].hp / b.camps[1 - side].maxHp < 0.2)) command(b, side, [u.id], null);
     }
     // le soigneur adverse d'abord : ceux qui se battent près de lui le prennent pour cible
     if (skill > 0.5) {
       const healer = foes.find((u) => u.s.healer);
-      if (healer) { const ids = near(mine, healer.x, healer.y, 5).filter((u) => !u.order && u.s.targets !== 'buildings' && u.target !== healer.id).map((u) => u.id); if (ids.length && rng() < 0.5) command(b, side, ids, { ref: healer.id }); }
+      if (healer) { const ids = near(mine, healer.x, healer.y, 5).filter((u) => !u.order && !u.swim && u.target !== healer.id).map((u) => u.id); if (ids.length && rng() < 0.5) command(b, side, ids, { ref: healer.id }); }
+    }
+    // la catapulte adverse tire depuis le centre : ceux qui sont tout près vont la casser
+    const fc = b.catas[1 - side];
+    if (!fc.dead && fc.at !== 'camp' && rng() < 0.3 + 0.5 * skill) {
+      const ids = near(mine, fc.x, fc.y, 8).filter((u) => !u.order && u.target !== fc.id && (!u.swim || Math.hypot(u.x - fc.x, u.y - fc.y) < (u.s.range + 1) * TILE)).slice(0, 3).map((u) => u.id);
+      if (ids.length) command(b, side, ids, { ref: fc.id });
     }
   }
 
-  // ---------- mode camps : relâcher ceux qui ont passé un flanc, charger la catapulte quand le centre est libre ----------
-  const camps = b.camps;
-  if (camps && ai.campT <= 0) {
+  // ---------- relâcher ceux qui ont passé un flanc ----------
+  if (ai.campT <= 0) {
     ai.campT = 1.6 - skill;
     for (const u of mine) if (u.order && u.order.x !== undefined && Math.hypot(u.x - u.order.x, u.y - u.order.y) < 2.4 * TILE) command(b, side, [u.id], null);
-    const fc = weight(near(foes, M.x, M.y, 7)), hitters = mine.filter((u) => u.order && u.order.ref === M.id);
-    if (fc > 1.2) { if (hitters.length) command(b, side, hitters.map((u) => u.id), null); }
-    else if (hitters.length < 3 && rng() < 0.25 + 0.5 * skill) {
-      const ids = near(mine, M.x, M.y, 7).filter((u) => !u.order).slice(0, 3 - hitters.length).map((u) => u.id);
-      if (ids.length) command(b, side, ids, { ref: M.id });
-    }
+  }
+
+  // ---------- la catapulte : au centre quand on peut, au camp quand il est menacé ----------
+  const cata = b.catas[side];
+  const homeThreat = weight(near(foes.filter((u) => !u.air && !u.swim), hb.x, hb.y, 11)), homeGuard = weight(near(mine, hb.x, hb.y, 11));
+  if (ai.cataT <= 0) {
+    ai.cataT = 2.4 - 1.4 * skill + rng() * 1.5;
+    const [cx, cy] = CATA_ROAD[side][CATA_ROAD[side].length - 1];
+    const cFoe = weight(near(foes, cx, cy, 7)), cMine = weight(near(mine, cx, cy, 7));
+    if (cata.want === 'centre') {
+      // retour au camp : il est attaqué et personne ne le défend, ou le centre est perdu d'avance
+      if ((homeThreat > homeGuard + 1.5 && rng() < 0.4 + 0.5 * skill) || (cFoe > cMine * 2 + 4 && cata.hp < cata.maxHp * 0.5 && rng() < skill)) setCata(b, side, 'camp');
+    } else if (skill > 0.02 && b.t > 20 - 10 * skill && homeThreat <= homeGuard + 0.5 && cFoe <= cMine * 1.3 + 2 && rng() < 0.35 + 0.5 * skill) setCata(b, side, 'centre');
   }
 
   // ---------- quel objectif ? ----------
-  const atCentre = weight(near(mine, M.x, M.y, 7)), foeCentre = weight(near(foes, M.x, M.y, 7));
-  const losing = foe.gauge - p.gauge;      // en mode camps, les jauges sont les charges des catapultes : on va au centre quand celle d'en face va tirer
+  const atCentre = weight(near(mine, CEN.x, CEN.y, 7)), foeCentre = weight(near(foes, CEN.x, CEN.y, 7));
   if (ai.planT <= 0) {
     ai.planT = 9 + rng() * 8 - 3 * skill;
     const free = b.towers.filter((t) => t.side !== side);
@@ -80,53 +97,71 @@ export function aiStep(b, ai, dt) {
       free.sort((t, s) => (weight(near(foes, t.x, t.y, 9)) + (t.side >= 0 ? 2 : 0)) - (weight(near(foes, s.x, s.y, 9)) + (s.side >= 0 ? 2 : 0)));
       ai.plan = 'tower'; ai.lane = free[0].lane;
     } else ai.plan = 'centre';
-    if (camps) {           // le couloir des prochaines poussées : souvent le centre, sinon le flanc le moins gardé
-      const fw = (l) => weight(foes.filter((u) => (l === 'L' ? u.x < 560 : u.x > 976)));
-      ai.push = rng() < 0.55 - 0.15 * skill ? 'centre' : fw('L') <= fw('R') ? 'L' : 'R';
-    }
+    // le couloir des prochaines poussées : souvent le centre, sinon le flanc le moins gardé
+    const fw = (l) => weight(foes.filter((u) => (l === 'L' ? u.x < 560 : u.x > 976)));
+    ai.push = rng() < 0.55 - 0.15 * skill ? 'centre' : fw('L') <= fw('R') ? 'L' : 'R';
+    ai.water = rng() < 0.5 ? 'L' : 'R';
   }
   if (ai.plan === 'tower') { const t = b.towers.find((x) => x.lane === ai.lane); if (!t || t.side === side) ai.plan = 'centre'; }
-  if (losing > 35 || foe.gauge > 70) ai.plan = 'centre';
+  if (losing > 35) ai.plan = 'centre';
 
   // ---------- poser une carte ----------
   if (!playable.length) return;
+  // des nageurs adverses dans notre eau : on répond avec un nageur ou un volant (les seuls qui peuvent les toucher)
+  const wet = swimmers(foes).filter(myHalf);
+  if (wet.length && rng() < 0.4 + 0.6 * skill) {
+    const ans = playable.filter((c) => c.a.swim || c.a.air);
+    if (ans.length) {
+      const c = pick(ans, (x) => x.cost * 0.3 + rng()), w = wet[0];
+      if (c.a.swim) { if (put(c, { x: w.x, y: w.y })) return; }
+      else if (put(c, { x: w.x, y: side === 0 ? Math.max(w.y, 700) : Math.min(w.y, 324) }, w.id)) return;
+    }
+  }
   // une boîte à côté de la tente pour bien commencer (et quand elle revient, si on a de l'Aura à ne savoir qu'en faire)
   const homeCrate = b.crates.filter((c) => !c.dead && deployZones(b, side).some((z) => z === (c.y < 400 ? 1 : c.y > 620 ? 2 : c.x < 768 ? 3 : 4)));
   if (homeCrate.length && (b.t < 14 || p.aura > 9) && rng() < 0.35 + 0.4 * skill && !near(mine, homeCrate[0].x, homeCrate[0].y, 4).length) {
-    const c = pick(playable, (x) => (BREAKERS[x.id] || 1) - x.cost * 0.45 + rng() * 0.5);
-    if (c.cost <= 4) { const cr = homeCrate[Math.floor(rng() * homeCrate.length)]; if (put(c, { x: cr.x + (cr.x < 768 ? 50 : -50), y: cr.y + (side === 1 ? 34 : -34) })) return; }
+    const c = pick(playable.filter((x) => !x.a.swim), (x) => (BREAKERS[x.id] || 1) - x.cost * 0.45 + rng() * 0.5);
+    if (c && c.cost <= 4) { const cr = homeCrate[Math.floor(rng() * homeCrate.length)]; if (put(c, { x: cr.x + (cr.x < 768 ? 50 : -50), y: cr.y + (side === 1 ? 34 : -34) })) return; }
   }
-  // mode camps : notre camp est attaqué, on le défend d'abord
-  if (camps) {
-    const hb = BASE[side], hf = weight(near(foes, hb.x, hb.y, 10)), hm = weight(near(mine, hb.x, hb.y, 10));
-    if (hf > hm * 1.1 + 0.5 && rng() < 0.6 + 0.4 * skill) {
-      const c = pick(playable, (x) => (TANKS.includes(x.id) ? 1.5 : 1) + Math.min(x.cost, hf) * 0.35 + rng());
+  // notre camp est attaqué : on le défend d'abord
+  if (homeThreat > homeGuard * 1.1 + 0.5 && rng() < 0.6 + 0.4 * skill) {
+    const land = playable.filter((x) => !x.a.swim);
+    if (land.length) {
+      const c = pick(land, (x) => (TANKS.includes(x.id) ? 1.5 : 1) + Math.min(x.cost, homeThreat) * 0.35 + rng());
       if (put(c, spot(side, 'back'))) return;
     }
   }
-  // la cible est menacée : on répond tout de suite, avec ce qui tient le choc
+  // le centre est menacé : on répond tout de suite, avec ce qui tient le choc
   const threat = foeCentre > atCentre * 1.1 + 1 || losing > 20;
   if (threat && rng() < 0.55 + 0.45 * skill) {
-    const c = pick(playable, (x) => (TANKS.includes(x.id) ? 2 : 1) + (BACK.includes(x.id) && atCentre > 2 ? 1.5 : 0) + Math.min(x.cost, foeCentre) * 0.3 + rng());
-    put(c, BACK.includes(c.id) ? spot(side, 'back') : spot(side, 'centre')); return;
+    const land = playable.filter((x) => !x.a.swim);
+    if (land.length) {
+      const c = pick(land, (x) => (TANKS.includes(x.id) ? 2 : 1) + (BACK.includes(x.id) && atCentre > 2 ? 1.5 : 0) + Math.min(x.cost, foeCentre) * 0.3 + rng());
+      put(c, BACK.includes(c.id) ? spot(side, 'back') : spot(side, 'centre')); return;
+    }
   }
   // sinon on attend d'avoir de quoi lancer une vraie poussée (les débutants jouent plus tôt et moins bien)
   const pushing = mine.filter((u) => !u.order || !u.order.home).length;
   const want = pushing ? 3.5 + 2 * (1 - skill) : 6 + 2.5 * skill;
   if (p.aura < Math.min(9.5, want)) return;
+  // un nageur de temps en temps : il descend la rivière jusqu'au camp adverse
+  const fish = playable.filter((x) => x.a.swim);
+  if (fish.length && rng() < 0.3 + (swimmers(mine).length ? 0 : 0.2)) { const c = pick(fish, (x) => x.cost * 0.2 + rng()); if (put(c, spot(side, ai.water === 'L' ? 'waterL' : 'waterR'))) return; }
+  const land = playable.filter((x) => !x.a.swim);
+  if (!land.length) { const c = fish[0]; if (c) put(c, spot(side, ai.water === 'L' ? 'waterL' : 'waterR')); return; }
   if (ai.plan === 'tower') {
     const t = b.towers.find((x) => x.lane === ai.lane);
-    const c = pick(playable, (x) => (BREAKERS[x.id] || 1) + rng() * 1.2);
+    const c = pick(land, (x) => (BREAKERS[x.id] || 1) + rng() * 1.2);
     // si on tient déjà la zone d'à côté on y pose directement, sinon au bout de notre zone, près du pont latéral
     put(c, spot(side, ai.lane), t.id); return;
   }
-  if (camps && ai.push && ai.push !== 'centre') {      // poussée par un flanc : on pose au bout de notre zone et on passe le petit pont
-    const c = pick(playable, (x) => (TANKS.includes(x.id) ? 2 : 1) + x.cost * 0.12 + rng() * 1.2), n0 = b.nextId;
+  if (ai.push && ai.push !== 'centre') {      // poussée par un flanc : on pose au bout de notre zone et on passe le petit pont
+    const c = pick(land, (x) => (TANKS.includes(x.id) ? 2 : 1) + x.cost * 0.12 + rng() * 1.2), n0 = b.nextId;
     if (put(c, spot(side, ai.push))) { const w = way(side, ai.push); command(b, side, b.units.filter((u) => u.id >= n0 && u.side === side).map((u) => u.id), { x: w.x, y: w.y }); }
     return;
   }
-  const front = near(mine, M.x, M.y, 9).some((u) => TANKS.includes(u.aid));
-  const c = pick(playable, (x) => (front ? (BACK.includes(x.id) ? 2.5 : (BREAKERS[x.id] || 1)) : TANKS.includes(x.id) ? 3 : 1) + x.cost * 0.12 + rng() * 1.2);
+  const front = near(mine, CEN.x, CEN.y, 9).some((u) => TANKS.includes(u.aid));
+  const c = pick(land, (x) => (front ? (BACK.includes(x.id) ? 2.5 : (BREAKERS[x.id] || 1)) : TANKS.includes(x.id) ? 3 : 1) + x.cost * 0.12 + rng() * 1.2);
   put(c, BACK.includes(c.id) && front ? spot(side, 'back') : spot(side, 'centre'));
 }
 

@@ -10,10 +10,10 @@ export const AVATARS = ['tiger', 'gorilla', 'eagle', 'bulldog', 'monkey', 'croc'
 
 // Animaux que les bots peuvent avoir selon l'arène (les plus rares arrivent plus haut)
 const POOL = {
-  1: ['kitten', 'monkey', 'bulldog', 'pig', 'orang', 'kitten', 'monkey', 'bulldog'],
-  2: ['kitten', 'monkey', 'bulldog', 'pig', 'orang', 'alligator', 'eagle'],
-  3: ['kitten', 'monkey', 'bulldog', 'pig', 'orang', 'alligator', 'eagle', 'gorilla', 'rhino'],
-  4: ['kitten', 'monkey', 'bulldog', 'pig', 'orang', 'alligator', 'eagle', 'gorilla', 'rhino', 'elephant'],
+  1: ['kitten', 'monkey', 'bulldog', 'pig', 'orang', 'clownfish', 'kitten', 'monkey', 'bulldog'],
+  2: ['kitten', 'monkey', 'bulldog', 'pig', 'orang', 'alligator', 'eagle', 'clownfish', 'octo'],
+  3: ['kitten', 'monkey', 'bulldog', 'pig', 'orang', 'alligator', 'eagle', 'gorilla', 'rhino', 'clownfish', 'octo', 'dolphin'],
+  4: ['kitten', 'monkey', 'bulldog', 'pig', 'orang', 'alligator', 'eagle', 'gorilla', 'rhino', 'elephant', 'clownfish', 'octo', 'dolphin'],
 };
 
 // Fabrique un adversaire. rng : générateur. level : niveau moyen du deck du joueur. ease : de -1 (facile) à +1 (difficile).
