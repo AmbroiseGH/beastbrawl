@@ -14,6 +14,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Beast Brawl!">
 <link rel="preload" href="assets/fonts/LilitaOne.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/ui/logo_michigan.webp" as="image">
+<link rel="preload" href="assets/bg/loading.webp" as="image">
 <link rel="stylesheet" href="styles/base.css">
 <link rel="stylesheet" href="styles/menus.css">
 <link rel="stylesheet" href="styles/battle.css">
@@ -28,6 +30,12 @@
       <div class="ld-bar"><div class="ld-fill" id="ldFill"></div></div>
       <div class="ld-text t" id="ldText">Chargement…</div>
       <div class="ld-tip t" id="ldTip"></div>
+    </section>
+
+    <!-- Ouverture : logo du studio (par-dessus le chargement, qui se prépare dessous) -->
+    <section id="scrLogo" class="screen">
+      <canvas id="logoCv" width="1" height="1"></canvas>
+      <div class="lg-tap t" id="lgTap" hidden>Touche l'écran</div>
     </section>
 
     <!-- Menus (accueil, boutique, collection, clan, classé) -->
@@ -61,5 +69,14 @@
     <div id="toasts"></div>
   </div>
 </div>
+<script>
+// Mise à l'échelle de la scène dès le premier affichage, avant l'arrivée du code du jeu : sans elle, l'écran de
+// lancement apparaît d'abord en taille réelle (941 × 1672, un gros zoom sur un téléphone) puis rétrécit d'un coup.
+(function () {
+  var W = 941, H = 1672, vw = innerWidth, vh = innerHeight, s = Math.min(vw / W, vh / H);
+  document.getElementById('stage').style.transform = 'translate(' + Math.round((vw - W * s) / 2) + 'px,' + Math.round((vh - H * s) / 2) + 'px) scale(' + s + ')';
+  if (!/[?&]test(=|&|$)/.test(location.search)) document.documentElement.classList.add('intro');
+})();
+</script>
 </body>
 </html>

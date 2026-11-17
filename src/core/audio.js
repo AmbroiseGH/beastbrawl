@@ -31,20 +31,37 @@ export function unlock() {
 addEventListener('pointerdown', unlock, { passive: true });
 addEventListener('keydown', unlock, { passive: true });
 
+// Charge un son dans WebAudio sous le nom « name ». Renvoie vrai s'il est prêt.
+export function loadSound(name, url) {
+  if (BUF[name]) return Promise.resolve(true);
+  if (!ensureCtx()) return Promise.resolve(false);
+  return fetch(url).then((r) => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+    .then((ab) => new Promise((res, rej) => { const p = ctx.decodeAudioData(ab, res, rej); if (p && p.then) p.then(res, rej); }))
+    .then((buf) => { BUF[name] = buf; return true; }).catch(() => false);
+}
 // Charge tous les bruitages (≈ 1 Mo) : appelé pendant l'écran de chargement, sans bloquer le jeu
 export function loadSfx() {
   if (!ensureCtx()) return Promise.resolve();
-  return Promise.all(NAMES.map((n) => fetch('assets/audio/sfx/' + n + '.mp3').then((r) => r.arrayBuffer())
-    .then((ab) => new Promise((res, rej) => { const p = ctx.decodeAudioData(ab, res, rej); if (p && p.then) p.then(res, rej); }))
-    .then((buf) => { BUF[n] = buf; }).catch(() => {}))).then(() => {});
+  return Promise.all(NAMES.map((n) => loadSound(n, 'assets/audio/sfx/' + n + '.mp3'))).then(() => {});
 }
+// Le navigateur laisse-t-il jouer du son tout de suite ? (sinon il faut un premier toucher)
+export const soundAllowed = () => !!ensureCtx() && ctx.state === 'running';
+// Attend que le son soit débloqué (après unlock), au plus « ms » millisecondes
+export function soundReady(ms = 400) {
+  if (!ctx) return Promise.resolve(false);
+  if (ctx.state === 'running') return Promise.resolve(true);
+  return Promise.race([ctx.resume().then(() => ctx.state === 'running', () => false), new Promise((r) => setTimeout(() => r(ctx.state === 'running'), ms))]);
+}
+// Durée d'un son chargé, en secondes (0 s'il manque)
+export const soundLength = (name) => (BUF[name] ? BUF[name].duration : 0);
 
 // Joue un bruitage. o : { v (volume), rate (vitesse/hauteur), at (délai en s), pan (-1 gauche … 1 droite) }
+// force : part même si le son n'est pas encore débloqué (dans le toucher qui le débloque, iPhone compris). Renvoie vrai si le son part.
 export function play(name, o = {}) {
-  if (!ctx || !vol() || !BUF[name] || ctx.state !== 'running') return;
+  if (!ctx || !vol() || !BUF[name] || (ctx.state !== 'running' && !o.force)) return false;
   const now = ctx.currentTime, gap = MIN_GAP[name] || 0.02;
-  if (!o.at && last[name] && now - last[name] < gap) return;
-  if (voices > 28) return;
+  if (!o.at && last[name] && now - last[name] < gap) return false;
+  if (voices > 28) return false;
   last[name] = now + (o.at || 0);
   const s = ctx.createBufferSource(), g = ctx.createGain();
   s.buffer = BUF[name]; s.playbackRate.value = o.rate || 1;
@@ -54,6 +71,26 @@ export function play(name, o = {}) {
   s.connect(g); out.connect(master);
   voices++; s.onended = () => { voices--; };
   s.start(now + (o.at || 0));
+  return true;
+}
+
+// Petit tintement de l'XP (synthétisé : lame de glockenspiel). step : 0, 1, 2… chaque pas monte d'une note de la gamme
+// pentatonique, pour que la jauge « monte » à l'oreille. o.v : volume, o.at : délai (s).
+const PENTA = [0, 2, 4, 7, 9];
+export function chime(step = 0, o = {}) {
+  if (!ctx || !vol() || ctx.state !== 'running' || voices > 28) return;
+  const st = Math.max(0, Math.round(step)), semi = 12 * Math.floor(st / 5) + PENTA[st % 5];
+  const f = 783.99 * Math.pow(2, Math.min(semi, 24) / 12);           // départ : sol5, deux octaves au plus
+  const t = ctx.currentTime + (o.at || 0), v = (o.v === undefined ? 1 : o.v) * 0.22 * vol();
+  const out = ctx.createGain(); out.gain.value = v; out.connect(master);
+  // la lame : fondamentale + partiel inharmonique (2,76) qui s'éteint vite + petit éclat de frappe
+  [[1, 1, 0.9], [2.756, 0.45, 0.16], [5.404, 0.18, 0.06]].forEach(([m, a, d]) => {
+    const os = ctx.createOscillator(), g = ctx.createGain();
+    os.type = 'sine'; os.frequency.value = f * m;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(a, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0008, t + d);
+    os.connect(g); g.connect(out); os.start(t); os.stop(t + d + 0.05);
+  });
+  voices++; setTimeout(() => { voices--; out.disconnect(); }, (o.at || 0) * 1000 + 1100);
 }
 const rnd = (a, b) => a + Math.random() * (b - a);
 
@@ -107,6 +144,17 @@ export function music(name) {
   fadeRaf = requestAnimationFrame(tick);
 }
 export const musicName = () => (cur ? cur.name : null);
+// Pendant un toucher : la piste « name » est lancée en muet puis arrêtée. Sur iPhone, elle pourra ensuite démarrer
+// toute seule (la musique du menu arrive après le jingle, sans attendre un autre toucher).
+export function primeMusic(name) {
+  if (!S.settings.music || (cur && cur.name === name)) return;
+  let el = tracks[name];
+  if (!el) { el = tracks[name] = new Audio('assets/audio/' + name + '.mp3'); el.loop = true; el.preload = 'auto'; }
+  el.muted = true;
+  const p = el.play();
+  const done = () => { if (!cur || cur.el !== el) el.pause(); el.muted = false; };
+  if (p && p.then) p.then(done, () => { el.muted = false; }); else done();
+}
 export function musicVolume() { if (cur) cur.el.volume = musicVol(); }
 // Coupe la musique quand le jeu passe en arrière-plan, la relance au retour
 document.addEventListener('visibilitychange', () => { if (!cur) return; if (document.hidden) cur.el.pause(); else if (wanted) cur.el.play().catch(() => {}); });

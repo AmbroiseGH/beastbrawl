@@ -1,10 +1,11 @@
-// Beast Brawl! — démarrage : chargement avec le jingle, puis le menu.
+// Beast Brawl! — démarrage : logo Michigan Studios, chargement avec le jingle, puis le menu.
 import { $, wait, DEBUG, TEST, pick } from './core/utils.js';
 import { load, S, changed } from './core/save.js';
 import { loadAll } from './core/assets.js';
-import { unlock, playFile, loadSfx } from './core/audio.js';
+import { unlock, playFile, loadSfx, loadSound, play } from './core/audio.js';
 import { fit } from './ui/stage.js';
 import { showMenu, prepare } from './ui/menu.js';
+import { studioLogo } from './ui/logo.js';
 import './ui/pages.js';
 import './ui/collection.js';
 import './ui/social.js';
@@ -29,8 +30,14 @@ if (DEBUG) document.body.classList.add('debug');
 fit();
 $('ldTip').textContent = pick(TIPS);
 
-// Jingle du lancement (créé avec Soundza). Si le navigateur bloque le son, on attend un toucher à la fin du chargement.
+// Jingle du chargement (créé avec Soundza). Il passe par WebAudio, débloqué par le toucher du logo s'il en a fallu un ;
+// si le son reste bloqué malgré tout, on attend un toucher à la fin du chargement.
 const INTRO = 'assets/audio/intro.mp3', INTRO_MS = 3300;      // la musique du menu arrive à la fin du jingle
+function playIntro(force) {
+  if (TEST || !S.settings.sfx) return null;
+  if (play('intro', { v: 0.85, force })) return { ok: Promise.resolve(true), pause() {} };
+  return playFile(INTRO, 0.85);
+}
 function tapToPlay() {
   const scr = $('scrLoading'), txt = $('ldText');
   txt.textContent = 'Touche l\'écran pour jouer'; txt.classList.add('tap'); scr.classList.add('tap');
@@ -40,7 +47,7 @@ function tapToPlay() {
       if (e.type === 'keydown') e.preventDefault();
       scr.removeEventListener('pointerdown', go); removeEventListener('keydown', go);
       txt.classList.remove('tap'); scr.classList.remove('tap');
-      unlock(); resolve();
+      unlock(); resolve(playIntro(true));                   // le jingle part dans le toucher même (iPhone)
     };
     scr.addEventListener('pointerdown', go); addEventListener('keydown', go);
   });
@@ -48,19 +55,22 @@ function tapToPlay() {
 
 async function boot() {
   let prog = 0;
+  // tout se charge pendant le logo
   const loading = loadAll((k) => { prog = k; $('ldFill').style.width = Math.round(k * 100) + '%'; $('ldText').textContent = 'Chargement… ' + Math.round(k * 100) + ' %'; });
-  const t0 = performance.now();
-  let intro = TEST ? null : playFile(INTRO, 0.85), introAt = t0;
   const online = Net.init().catch(() => false);             // jeu en ligne : on se signale au serveur pendant le chargement
+  const jingle = TEST ? null : loadSound('intro', INTRO);
   const sounds = loadSfx();                                  // bruitages décodés une fois pour toutes
+  await studioLogo();
+  if (jingle) await Promise.race([jingle, wait(800)]);
+  const t0 = performance.now();
+  let intro = playIntro(), introAt = t0;
   await loading;
   await Promise.race([sounds, wait(TEST ? 0 : 2500)]);
   await prepare();                                           // décor des menus prêt à dessiner
   if (!TEST) await wait(Math.max(0, 1400 - (performance.now() - t0)));   // le temps de voir l'écran de chargement
   if (intro && !(await Promise.race([intro.ok, wait(2000)]))) {
     intro.pause();                                           // son bloqué : un toucher lance le jingle
-    await tapToPlay();
-    intro = playFile(INTRO, 0.85); introAt = performance.now();
+    intro = await tapToPlay(); introAt = performance.now();
     $('ldText').textContent = 'Prêt !';
     await wait(900);
   } else {

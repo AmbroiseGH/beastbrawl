@@ -9,14 +9,14 @@ export const DATA = {};    // fichiers json par nom
 const BOOT_IMAGES = {
   bgMain: 'bg/main2.webp', bgShop: 'bg/shop2.webp', bgCollection: 'bg/collection.webp', bgClan: 'bg/clan.webp', bgRanked: 'bg/ranked.webp',
   fx: 'fx/fx.webp', font: 'fonts/bitmap.webp',
-  coin: 'ui/cur_coin.webp', paw: 'ui/cur_paw.webp', ruby: 'ui/cur_ruby.webp', xp: 'ui/cur_xp.webp', trophy: 'ui/ic_trophy.webp', lock: 'ui/ic_lock.webp', star: 'ui/ic_star.webp',
+  coin: 'ui/cur_coin.webp', paw: 'ui/cur_paw.webp', ruby: 'ui/cur_ruby.webp', xp: 'ui/xp_star.webp', trophy: 'ui/ic_trophy.webp', lock: 'ui/ic_lock.webp', star: 'ui/ic_star.webp',
   ...Object.fromEntries(ANIMAL_IDS.map((id) => ['card_' + id, 'cards/' + id + '.webp'])),
   ...Object.fromEntries(ANIMAL_IDS.map((id) => ['pt_' + id, 'portraits/' + id + '.webp'])),
   ...Object.fromEntries(CHEST_IDS.map((id) => ['chest_' + id, 'chests/icon_' + id + '.webp'])),
 };
 const UI_PRELOAD = ['btn_yellow', 'btn_green', 'btn_blue', 'btn_purple', 'btn_red', 'btn_stone', 'btn_wood', 'rib_blue', 'rib_red', 'rib_purple', 'rib_yellow',
   'ic_close', 'ic_ok', 'ic_info', 'ic_settings', 'ic_play', 'ic_back', 'ic_crown', 'ic_shield_red', 'ic_shield_blue', 'ic_target',
-  'av_tiger', 'av_gorilla', 'av_eagle', 'av_tiger2', 'av_bulldog', 'av_monkey', 'av_croc', 'av_orang', 'order_whistle', 'order_attack',
+  'av_tiger', 'av_gorilla', 'av_eagle', 'av_tiger2', 'av_bulldog', 'av_monkey', 'av_croc', 'av_orang', 'order_whistle', 'order_attack', 'xp_hud',
   ...['shop', 'collection', 'main', 'clan', 'ranked'].flatMap((t) => ['navcap_' + t, 'navring_' + t, 'navfill_' + t])];
 const BOOT_JSONS = { fx: 'fx/fx.json', font: 'fonts/bitmap.json', chestMeta: 'chests/meta.json?v=3' };
 

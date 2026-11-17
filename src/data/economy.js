@@ -54,14 +54,14 @@ export const DAILY = [
 
 // Quêtes du jour (3 tirées au hasard chaque jour) et quêtes de départ (une seule fois)
 export const DAILY_QUESTS = [
-  { id: 'win3', text: 'Gagne 3 combats', stat: 'wins', goal: 3, reward: { coins: 1000, rubies: 5 } },
-  { id: 'fight5', text: 'Joue 5 combats', stat: 'fights', goal: 5, reward: { coins: 800, paws: 15 } },
-  { id: 'ko25', text: 'Mets 25 animaux K.-O.', stat: 'kos', goal: 25, reward: { paws: 30 } },
-  { id: 'crowns6', text: 'Gagne 6 couronnes', stat: 'crowns', goal: 6, reward: { rubies: 10 } },
-  { id: 'streak2', text: 'Gagne 2 combats de suite', stat: 'streakMax', goal: 2, reward: { coins: 1000, rubies: 5 } },
-  { id: 'up1', text: 'Améliore un animal', stat: 'upgrades', goal: 1, reward: { coins: 1000 } },
-  { id: 'chest2', text: 'Ouvre 2 cages', stat: 'chests', goal: 2, reward: { coins: 600, rubies: 5 } },
-  { id: 'aura60', text: 'Dépense 60 d\'Aura', stat: 'aura', goal: 60, reward: { coins: 800, paws: 10 } },
+  { id: 'win3', text: 'Gagne 3 combats', stat: 'wins', goal: 3, reward: { coins: 1000, rubies: 5, xp: 60 } },
+  { id: 'fight5', text: 'Joue 5 combats', stat: 'fights', goal: 5, reward: { coins: 800, paws: 15, xp: 40 } },
+  { id: 'ko25', text: 'Mets 25 animaux K.-O.', stat: 'kos', goal: 25, reward: { paws: 30, xp: 40 } },
+  { id: 'crowns6', text: 'Gagne 6 couronnes', stat: 'crowns', goal: 6, reward: { rubies: 10, xp: 50 } },
+  { id: 'streak2', text: 'Gagne 2 combats de suite', stat: 'streakMax', goal: 2, reward: { coins: 1000, rubies: 5, xp: 60 } },
+  { id: 'up1', text: 'Améliore un animal', stat: 'upgrades', goal: 1, reward: { coins: 1000, xp: 30 } },
+  { id: 'chest2', text: 'Ouvre 2 cages', stat: 'chests', goal: 2, reward: { coins: 600, rubies: 5, xp: 30 } },
+  { id: 'aura60', text: 'Dépense 60 d\'Aura', stat: 'aura', goal: 60, reward: { coins: 800, paws: 10, xp: 40 } },
 ];
 export const STARTER_QUESTS = [
   { id: 's_win', text: 'Remporte ta première victoire', stat: 'wins', goal: 1, reward: { coins: 1000, rubies: 10 } },

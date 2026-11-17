@@ -10,6 +10,8 @@ import { owned, levelOf, cardsOf, upgradeAnimal, upgradeReady, setDeck, offers }
 import { register, render } from './menu.js';
 import { modal, p, toast } from './ui.js';
 import { celebrate, pct } from './pages.js';
+import { xpFrom, xpHold, xpSettled } from './xpbar.js';
+import { toStage } from './stage.js';
 import { drawUnitFrame, label } from '../render/view.js';
 import { bindDeckDrag, dragBusy } from './deckdrag.js';
 
@@ -106,18 +108,33 @@ function swapPicker(m, id) {
 
 // ---------- amélioration : la carte monte de niveau, les rayons tournent, les chiffres grimpent ----------
 function upgradeShow(id, from, ups) {
-  const a = ANIMALS[id], R = RARITY[a.rarity], s0 = statsAt(id, from), s1 = statsAt(id, from + 1);
+  const a = ANIMALS[id], R = RARITY[a.rarity], s0 = statsAt(id, from), s1 = statsAt(id, from + 1), cost = upgradeCost(id, from);
   const row = (lbl, x, y) => h('div', { class: 'up-row t sm' }, lbl, h('span', null, fmt(x)), h('i'), h('b', null, fmt(y)));
+  // l'XP gagnée : ses étoiles partent de cette ligne et filent vers la jauge du haut, par-dessus la fenêtre
+  const xpLine = cost && cost.xp ? h('div', { class: 'upg-xp t sm' }, '+' + fmt(cost.xp) + ' XP', h('span', { class: 'ico xp' })) : null;
+  xpHold(true);
   const el = h('div', { class: 'upg-ov', style: { '--c': R.color, '--g': R.glow } },
     h('div', { class: 'upg-rays' }),
     h('div', { class: 'upg-card' }, h('img', { src: `assets/cards/${id}.webp`, alt: '' }), h('div', { class: 'upg-shine' })),
     h('div', { class: 'upg-lv t' }, h('span', null, 'Niveau ' + from), h('i'), h('b', null, String(from + 1))),
-    h('div', { class: 'upg-stats' }, row('Points de vie', s0.hp, s1.hp), row('Dégâts', s0.dmg, s1.dmg), s0.heal ? row('Soin', s0.heal, s1.heal) : null),
+    h('div', { class: 'upg-stats' }, row('Points de vie', s0.hp, s1.hp), row('Dégâts', s0.dmg, s1.dmg), s0.heal ? row('Soin', s0.heal, s1.heal) : null), xpLine,
     h('div', { class: 'upg-tap t xs' }, 'Touche pour continuer'));
   $('modals').append(el);
   sfx.upgrade(); play('levelup', { at: 0.55 }); play('v_' + id, { at: 0.75, v: 0.7 });
-  let done = false;
-  const close = () => { if (done) return; done = true; el.classList.add('out'); setTimeout(() => el.remove(), 260); render(); for (const u of ups) celebrate('Niveau ' + u.level + ' atteint !', null, `Récompense : ${fmt(u.coins)}<i class="ico coin"></i> ${u.rubies}<i class="ico ruby"></i>`); };
+  let released = false, done = false;
+  const release = () => {
+    if (released) return; released = true;
+    if (xpLine && xpLine.isConnected) { const b = xpLine.getBoundingClientRect(), p = toStage({ clientX: b.left + b.width / 2, clientY: b.top + b.height / 2 }); xpFrom([p.x, p.y]); } else xpFrom([470, 700]);
+    xpHold(false);
+  };
+  const xpTimer = setTimeout(release, 1500);          // une fois les statistiques affichées
+  const close = async () => {
+    if (done) return; done = true; clearTimeout(xpTimer); release();
+    el.classList.add('out'); setTimeout(() => el.remove(), 260); render();
+    if (!ups.length) return;
+    await xpSettled();                                  // le niveau du joueur se fête quand la jauge a fini de monter
+    for (const u of ups) celebrate('Niveau ' + u.level + ' atteint !', null, `Récompense : ${fmt(u.coins)}<i class="ico coin"></i> ${u.rubies}<i class="ico ruby"></i>`);
+  };
   setTimeout(() => el.addEventListener('pointerdown', close), 700);
   if (TEST) setTimeout(close, 900);
 }

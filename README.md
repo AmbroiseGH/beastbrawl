@@ -31,6 +31,11 @@ Des combats d'animaux en temps réel, à la manière de Clash Royale.
 6. La boutique propose chaque jour trois offres de cartes payées en pièces (une commune, une rare, une épique) et les
    sept cages, payées en gemmes.
 7. Les trophées font monter d'arène (5 arènes, une tous les 300 trophées), chacune avec son ambiance et sa musique.
+8. Les combats, les améliorations et les défis du jour rapportent de l'**expérience** (l'étoile violette) : des étoiles
+   filent vers la jauge du haut, qui monte en tintant. Chaque niveau gagné rapporte des pièces et des gemmes.
+
+Le jeu s'ouvre sur le logo Michigan Studios, au son d'une guitare western. Si le navigateur bloque le son (iPhone,
+première visite), « Touche l'écran » s'affiche d'abord : le logo apparaît au toucher, avec sa guitare.
 
 | Animal | Rareté | Aura | Rôle |
 | --- | --- | --- | --- |
@@ -45,7 +50,7 @@ Des combats d'animaux en temps réel, à la manière de Clash Royale.
 | Rhinocéros | Légendaire | 6 | Charge, carapace de métal de plus en plus solide |
 | Éléphant | Ultime | 9 | Puise dans les rivières et arrose : l'ennemi est ralenti |
 
-Les bruitages ont été créés avec [Soundza](https://soundza.com) (sons générés par IA).
+Les bruitages et la guitare du logo ont été créés avec [Soundza](https://soundza.com) (sons générés par IA).
 
 ## Installer le jeu sur un téléphone
 

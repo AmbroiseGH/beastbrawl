@@ -26,6 +26,7 @@ import { view as stageView, toStage, onResize, setBackdrop } from './stage.js';
 import { showMenu } from './menu.js';
 import { toast, fly, rewardHtml, TARGET, ask } from './ui.js';
 import { celebrate } from './pages.js';
+import { xpFrom, xpSettled } from './xpbar.js';
 import { Net } from '../online/net.js';
 
 let V = null, B = null, raf = 0, busy = false, lastT = 0;
@@ -669,9 +670,13 @@ function showEnd(res, out, ranked) {
   })();
   async function next() {
     if (closed) return; closed = true; sfx.click(); el.remove();
+    xpFrom([470, 900]);       // de retour au menu, l'XP du combat file vers la jauge (src/ui/xpbar.js)
     leave();
-    for (const u of out.ups) celebrate('Niveau ' + u.level + ' atteint !', null, `Récompense : ${rewardHtml({ coins: u.coins, rubies: u.rubies })}`);
-    if (out.arenaUp) celebrate(ARENAS[out.arenaUp - 1].name + ' débloquée !', null, `Arène ${out.arenaUp} : nouvelle ambiance, nouvelle musique et des cages plus riches.`);
+    (async () => {
+      if (out.ups.length) await xpSettled();
+      for (const u of out.ups) celebrate('Niveau ' + u.level + ' atteint !', null, `Récompense : ${rewardHtml({ coins: u.coins, rubies: u.rubies })}`);
+      if (out.arenaUp) celebrate(ARENAS[out.arenaUp - 1].name + ' débloquée !', null, `Arène ${out.arenaUp} : nouvelle ambiance, nouvelle musique et des cages plus riches.`);
+    })();
     if (r.coins) fly('coin', [470, 900], TARGET.coin, 10, (i) => sfx.coin(i));
     if (r.paws) fly('paw', [470, 900], TARGET.paw, 6);
     if (r.rubies) fly('ruby', [470, 900], TARGET.ruby, 3);

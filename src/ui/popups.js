@@ -9,21 +9,28 @@ import { onAction, render } from './menu.js';
 import { handlers, celebrate } from './pages.js';
 import { modal, p, toast, ask, prompt, fly, rewardHtml, TARGET } from './ui.js';
 import { startFight } from './battle.js';
+import { xpFrom, xpSettled } from './xpbar.js';
+import { toStage } from './stage.js';
 import { friendsPopup } from './social.js';
 import { openChestAnim } from './chest.js';
 import { Net } from '../online/net.js';
 
-// Montre des gains : les icônes volent vers les compteurs du haut
+// Montre des gains : les icônes volent vers les compteurs du haut (l'XP : étoiles violettes et jauge animée, voir xpbar.js)
 export function showGain(r, from = [470, 836]) {
   sfx.reward();
   if (r.coins) fly('coin', from, TARGET.coin, Math.min(12, 4 + Math.round(r.coins / 800)), (i) => sfx.coin(i % 4));
   if (r.paws) fly('paw', from, TARGET.paw, Math.min(10, 3 + Math.round(r.paws / 6)));
   if (r.rubies) fly('ruby', from, TARGET.ruby, Math.min(8, 2 + r.rubies));
-  if (r.xp) fly('xp', from, TARGET.xp, 4);
+  if (r.xp) xpFrom(from);
 }
-export function levelUps(ups) {
-  for (const u of ups || []) celebrate('Niveau ' + u.level + ' atteint !', null, `Récompense : ${rewardHtml({ coins: u.coins, rubies: u.rubies })}`);
+// Fête les niveaux gagnés, une fois que la jauge d'XP a fini de monter
+export async function levelUps(ups) {
+  if (!ups || !ups.length) return;
+  await xpSettled();
+  for (const u of ups) celebrate('Niveau ' + u.level + ' atteint !', null, `Récompense : ${rewardHtml({ coins: u.coins, rubies: u.rubies })}`);
 }
+// Centre d'un élément, en px de scène (pour faire partir les gains d'un bouton)
+const centerOf = (el) => { const b = el.getBoundingClientRect(), p = toStage({ clientX: b.left + b.width / 2, clientY: b.top + b.height / 2 }); return [Math.round(p.x), Math.round(p.y)]; };
 
 // ---------- quêtes ----------
 function questRow(q, refresh) {
@@ -31,7 +38,7 @@ function questRow(q, refresh) {
   return h('div', { class: 'card q' + (q.claimed ? ' done' : '') },
     h('div', { class: 'txt' }, h('div', { class: 't xs' }, q.text), h('div', { class: 'bar' }, h('b', { style: { width: Math.round(ratio * 100) + '%' } }), h('span', { class: 't xs' }, q.value + ' / ' + q.goal))),
     q.claimed ? h('div', { class: 'rw t xs good' }, 'Fait ✓')
-      : q.ready ? h('button', { class: 'btn green small t sm pulse', html: rewardHtml(q.reward), onclick: (e) => { const r = claimQuest(q); if (r) { const b = e.currentTarget.getBoundingClientRect(); showGain(r.reward); levelUps(r.ups); refresh(); } } })
+      : q.ready ? h('button', { class: 'btn green small t sm pulse', html: rewardHtml(q.reward), onclick: (e) => { const at = centerOf(e.currentTarget), r = claimQuest(q); if (r) { showGain(r.reward, at); levelUps(r.ups); refresh(); } } })
         : h('div', { class: 'rw t xs', html: rewardHtml(q.reward) }));
 }
 export function questsPopup() {

@@ -1,11 +1,11 @@
 // Les menus : barre du haut (niveau, pièces, pattes, gemmes), barre du bas, et les pages entre les deux.
 // Les cinq pages sont rangées côte à côte, dans l'ordre de la barre du bas. On passe de l'une à l'autre en faisant
 // glisser la rangée, au doigt ou en touchant la barre du bas : les deux barres restent fixes.
-import { $, h, fmt, fmtShort, clamp } from '../core/utils.js';
+import { $, h, fmtShort, clamp } from '../core/utils.js';
 import { S, onChange } from '../core/save.js';
 import { sfx, music } from '../core/audio.js';
 import { IMG } from '../core/assets.js';
-import { xpNeed } from '../data/economy.js';
+import { xpSync } from './xpbar.js';
 import { W, H, view, onResize, setBackdrop, warmBackdrop } from './stage.js';
 
 export const TABS = ['shop', 'collection', 'main', 'clan', 'ranked'];   // de gauche à droite, comme dans la barre du bas
@@ -25,19 +25,14 @@ export const current = () => tab;
 export const register = (name, fn) => { pages[name] = fn; };
 export const onAction = (name, fn) => { actions[name] = fn; };
 
-const last = { coins: -1, paws: -1, rubies: -1, level: -1 };
+const last = { coins: -1, paws: -1, rubies: -1 };
 export function refreshTop() {
-  const need = xpNeed(S.level);
-  $('tbLvl').textContent = S.level;
-  $('tbXp').textContent = fmt(S.xp) + ' / ' + fmt(need);
-  $('tbXpFill').style.width = Math.round(Math.min(1, S.xp / need) * 100) + '%';
+  xpSync();             // niveau et jauge d'XP : animés quand de l'XP vient d'être gagnée (src/ui/xpbar.js)
   for (const [k, id] of [['coins', 'tbCoins'], ['paws', 'tbPaws'], ['rubies', 'tbRubies']]) {
     const el = $(id); el.textContent = fmtShort(S[k]);
     if (last[k] >= 0 && S[k] !== last[k]) { el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); }
     last[k] = S[k];
   }
-  if (last.level >= 0 && S.level !== last.level) { $('tbLvl').classList.remove('pop'); void $('tbLvl').offsetWidth; $('tbLvl').classList.add('pop'); }
-  last.level = S.level;
 }
 
 // ---------- le décor ----------
