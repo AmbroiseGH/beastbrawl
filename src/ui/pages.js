@@ -120,6 +120,8 @@ async function openFromSlot(i, pay) {
   render();
 }
 
+// Temps restant avant les nouvelles offres de la boutique (minuit)
+const resetText = () => { const d = new Date(); d.setHours(24, 0, 0, 0); return 'Nouvelles offres dans ' + fmtTime((d - Date.now()) / 1000); };
 // Les minuteurs des cages défilent chaque seconde ; quand une cage est prête, la page se redessine
 setInterval(() => {
   if ($('scrMenu').hidden) return;
@@ -131,7 +133,7 @@ setInterval(() => {
     const g = el.nextElementSibling; if (g) g.innerHTML = gemsToOpen(left) + '<i class="ico ruby"></i>';
   });
   const sh = document.querySelector('.of-reset');
-  if (sh) { const d = new Date(); d.setHours(24, 0, 0, 0); sh.textContent = 'Nouvelles offres dans ' + fmtTime((d - Date.now()) / 1000); }
+  if (sh) sh.textContent = resetText();
   if (ready) { play('chest_land', { v: 0.5 }); render(); }
 }, 1000);
 
@@ -150,7 +152,7 @@ register('shop', (pg) => {
       o.bought ? h('div', { class: 'of-price sold t sm' }, 'Acheté ✓') : h('div', { class: 'of-price t sm' + (can ? '' : ' no'), html: `<i class="ico coin"></i>${fmt(o.price)}` })),
     hit(x, OFFER_Y, OFFER_W, OFFER_H, () => offerTap(o), a.name));
   });
-  pg.append(h('div', { class: 'of-reset t xs' }, ''));
+  pg.append(h('div', { class: 'of-reset t xs' }, resetText()));   // écrit tout de suite : sinon la ligne n'apparaît qu'à la seconde suivante
   CAGES.forEach(([tier, x, y, w, hh]) => pg.append(hit(x, y, w, hh, () => cagePopup(tier), CHESTS[tier].name)));
   pg.append(hit(836, 395, 76, 56, () => offersInfo(), 'À propos des offres'), hit(836, 838, 76, 56, () => cagesInfo(), 'À propos des cages'));
 });
