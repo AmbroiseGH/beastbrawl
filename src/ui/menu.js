@@ -91,7 +91,18 @@ async function fitImages() {
   });
   const stale = FIT; FIT = fit;
   if (stale) TABS.forEach((t) => { const im = stale.bg[t]; if (im !== SRC[t].bg && im !== fit.bg[t] && im.close) im.close(); });   // anciennes images réduites
+  drawCap();
   if (panes[tab]) layout();
+}
+// L'icône de l'onglet actif est aussi recopiée par-dessus les pages : une liste qui descend jusqu'à la barre du bas
+// (la collection) passe dessous au lieu de la couper.
+const capCv = $('navCap'), capCtx = capCv.getContext('2d');
+function drawCap() {
+  if (!FIT || !FIT.cap[tab]) return;
+  const [bx, by, bw, bh] = FIT.box[tab], k = FIT.k;
+  if (capCv.width !== bw || capCv.height !== bh) { capCv.width = bw; capCv.height = bh; } else capCtx.clearRect(0, 0, bw, bh);
+  capCtx.drawImage(FIT.cap[tab], 0, 0);
+  Object.assign(capCv.style, { left: bx / k + 'px', top: by / k + 'px', width: bw / k + 'px', height: bh / k + 'px' });
 }
 // Décode les images du décor (à appeler une fois, après le chargement et avant d'afficher les menus)
 export async function prepare() {
@@ -165,7 +176,7 @@ function setTab(t) {
   tab = t; mount(t).pg.id = 'page';
   const nav = $('nav'); nav.textContent = '';
   NAV[t].forEach(([x0, x1], i) => nav.append(h('button', { class: 'hit', 'aria-label': TABS[i], style: { left: x0 + 'px', top: '0', width: (x1 - x0) + 'px', height: '172px' }, onclick: () => go(TABS[i]) })));
-  liftFixed(); refreshTop();
+  liftFixed(); refreshTop(); drawCap();
 }
 // Place les pages et redessine le décor pour la position actuelle de la rangée
 function layout() {

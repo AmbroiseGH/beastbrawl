@@ -39,8 +39,9 @@ export function json(key, path) {
   return pending['j:' + key] || (pending['j:' + key] = fetch('assets/' + path).then((r) => r.json()).then((j) => { DATA[key] = j; return j; }).catch((e) => { console.warn('json manquant :', key, e); return null; }).finally(() => delete pending['j:' + key]));
 }
 // Ce qu'il faut pour dessiner un animal en combat (hd : la grande planche de l'aperçu de la collection)
-// (?v=2 : les planches du Singe et du Bulldog ont changé de forme, l'ancienne copie gardée hors ligne ne doit pas servir)
-export const unitAssets = (id, hd) => { const k = hd ? id + '_hd' : id; return Promise.all([image(k, 'units/' + k + '.webp?v=3'), json(k, 'units/' + k + '.json?v=3')]); };
+// (?v=4 : changé à chaque nouvelle version des planches, pour que l'ancienne copie gardée hors ligne ne serve plus ;
+// v4 = effets d'attaque sans halo noir)
+export const unitAssets = (id, hd) => { const k = hd ? id + '_hd' : id; return Promise.all([image(k, 'units/' + k + '.webp?v=4'), json(k, 'units/' + k + '.json?v=4')]); };
 // La grande arène : fond en haute définition, mini-carte, masque de l'eau (pour l'animer), éléments détourés (boîtes,
 // cages, tours, machine, tente), barre du bas, fond flouté autour de l'écran, et l'orang-outan qui garde les tours
 export function mapAssets(n) {

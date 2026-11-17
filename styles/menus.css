@@ -7,6 +7,7 @@
 .pane .pg{position:absolute;inset:0}
 .pane .fixed{display:none}   /* pastilles posées sur la barre du bas : recopiées dans #pageFixed, elles ne glissent pas */
 #pageFixed{position:absolute;inset:0;pointer-events:none}
+#navCap{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none}   /* l'icône de l'onglet actif, posée au-dessus des pages */
 #nav{position:absolute;left:0;right:0;top:1500px;height:172px}
 #topbar{position:absolute;left:0;top:0;width:941px;height:84px}
 .tb-lvl{position:absolute;left:55px;top:41px;transform:translate(-50%,-50%);font-size:36px;-webkit-text-stroke-width:6px;text-shadow:0 3px 0 var(--ink)}
