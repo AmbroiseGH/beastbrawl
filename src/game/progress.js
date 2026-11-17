@@ -3,7 +3,7 @@ import { S, changed } from '../core/save.js';
 import { today } from '../core/utils.js';
 import { ANIMALS, MAX_LEVEL } from '../data/animals.js';
 import { xpNeed, levelReward, fightRewards, arenaOf, DAILY, DAILY_QUESTS, STARTER_QUESTS } from '../data/economy.js';
-import { upgradeCost, CHESTS, CHEST_SLOTS, cycleChest, rollChest, gemsToOpen, PAW_SECONDS, dailyOffers, DECK_SIZE, WELCOME } from '../data/cards.js';
+import { upgradeCost, CHESTS, CHEST_SLOTS, cycleChest, rollChest, gemsToOpen, PAW_SECONDS, dailyOffers, DECK_SIZE, WELCOME, STARTER } from '../data/cards.js';
 
 // Ajoute des gains. Renvoie la liste des niveaux gagnés (pour fêter ça à l'écran).
 export function grant(r, silent) {
@@ -152,6 +152,8 @@ export function buyChest(tier) {
   return applyChest(rollChest(tier, arenaOf(S.trophies)));
 }
 export function welcomeChest() { S.welcome = true; return applyChest({ ...WELCOME, cards: WELCOME.cards.map((x) => ({ ...x })) }); }
+// Le coffre en bois de la fin du tutoriel (une seule fois) ; il remplace la cage de bienvenue
+export function starterChest() { S.welcome = true; S.tuto = { ...(S.tuto || {}), chest: true }; return applyChest({ ...STARTER, cards: STARTER.cards.map((x) => ({ ...x })) }); }
 function applyChest(loot) {
   loot.cards = loot.cards.map((x) => { const lvBefore = levelOf(x.id), had = cardsOf(x.id); const r = addCards(x.id, x.n); return { ...x, ...r, had, lvBefore }; });
   S.coins += loot.coins; S.rubies += loot.gems; S.opened++;

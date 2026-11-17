@@ -75,7 +75,7 @@ function matchOverlay() {
 // opp : adversaire imposé (ami, membre du clan, bot du tutoriel). deck : cartes prêtées pour ce combat (tutoriel).
 // guide : les bulles du tutoriel (src/ui/tuto.js) : start(api), tick(dt), event(e), done(res) qui rend la main au menu.
 export async function startFight({ mode = 'ranked', opp = null, deck = null, guide = null } = {}) {
-  if (busy) return; busy = true;
+  if (busy) return false; busy = true;
   try {
     sfx.match();
     const ov = matchOverlay(), t0 = performance.now();
@@ -88,7 +88,8 @@ export async function startFight({ mode = 'ranked', opp = null, deck = null, gui
     await loading;
     enter(opp, mode, mine, arena, guide);
     ov.close();
-  } catch (e) { console.error(e); busy = false; toast('Impossible de lancer le combat.'); document.querySelectorAll('.mm').forEach((x) => x.remove()); }
+    return true;
+  } catch (e) { console.error(e); busy = false; toast('Impossible de lancer le combat.'); document.querySelectorAll('.mm').forEach((x) => x.remove()); return false; }
 }
 
 // ---------- entrée dans l'arène ----------
@@ -443,6 +444,7 @@ const RING = (r, base = 90) => r / WS / base;      // taille d'un anneau d'effet
 function onEvents(evs) {
   const b = B.b;
   for (const e of evs) {
+    if (B.guide) B.guide.event(e);
     switch (e.type) {
       case 'deploy':       // l'animal tombe du ciel : le bruit de l'atterrissage suit de peu (la poussière est dessinée par la vue)
         if (e.swim) {      // un nageur plonge dans l'eau de son camp (les ronds dans l'eau sont dessinés par la vue)

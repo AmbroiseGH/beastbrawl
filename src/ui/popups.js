@@ -4,6 +4,7 @@ import { S, changed, reset } from '../core/save.js';
 import { sfx, music } from '../core/audio.js';
 import { ARENA_MAX, ARENAS, arenaOf, arenaRange, DAILY, EXCHANGE } from '../data/economy.js';
 import { AVATARS } from '../data/bots.js';
+import { ANIMAL_IDS } from '../data/animals.js';
 import { dailyQuests, starterQuests, claimQuest, dailyReady, dailyStep, claimDaily, grant, welcomeChest } from '../game/progress.js';
 import { onAction, render } from './menu.js';
 import { handlers, celebrate } from './pages.js';
@@ -13,6 +14,7 @@ import { xpFrom, xpSettled } from './xpbar.js';
 import { toStage } from './stage.js';
 import { friendsPopup } from './social.js';
 import { openChestAnim } from './chest.js';
+import { runTutorial, offerTutorial } from './tuto.js';
 import { Net } from '../online/net.js';
 
 // Montre des gains : les icônes volent vers les compteurs du haut (l'XP : étoiles violettes et jauge animée, voir xpbar.js)
@@ -79,28 +81,27 @@ export function statsPopup() {
   const st = (l, v) => h('div', { class: 'stat t xs' }, l, h('b', null, v));
   const rate = S.fights ? Math.round(S.wins / S.fights * 100) + ' %' : '-';
   modal({ title: 'Succès', color: 'yellow', body: [h('div', { class: 'stats' }, st('Combats', fmt(S.fights)), st('Victoires', fmt(S.wins)), st('Taux de victoire', rate), st('Meilleure série', fmt(S.bestStreak)),
-    st('Animaux K.-O.', fmt(S.kos)), st('Couronnes', fmt(S.crowns)), st('Record de trophées', fmt(S.best)), st('Améliorations', fmt(S.upgrades)), st('Cages ouvertes', fmt(S.opened)), st('Animaux', Object.keys(S.cards).length + ' / 10'))] });
+    st('Animaux K.-O.', fmt(S.kos)), st('Couronnes', fmt(S.crowns)), st('Record de trophées', fmt(S.best)), st('Améliorations', fmt(S.upgrades)), st('Cages ouvertes', fmt(S.opened)), st('Animaux', Object.keys(S.cards).length + ' / ' + ANIMAL_IDS.length))] });
 }
 
 // ---------- paramètres ----------
 export function settingsPopup() {
   const tog = (label, key) => { const sw = h('div', { class: 'switch' + (S.settings[key] ? ' on' : '') }); return h('button', { class: 'card toggle t sm', style: { width: '100%' }, onclick: () => { S.settings[key] = !S.settings[key]; sw.classList.toggle('on', S.settings[key]); changed(); if (key === 'music') music('menu'); sfx.click(); } }, label, sw); };
-  const m = modal({ title: 'Paramètres', body: [tog('Bruitages', 'sfx'), tog('Musique', 'music'), tog('Camps à détruire', 'camps'),
-    p('Désactivé : l\'ancien mode, avec la jauge du centre', 'small'),
+  const m = modal({ title: 'Paramètres', body: [tog('Bruitages', 'sfx'), tog('Musique', 'music'),
     h('div', { class: 'row' },
       h('button', { class: 'btn blue small t sm', onclick: () => { sfx.click(); m.close(); howTo(); } }, 'Comment jouer'),
+      h('button', { class: 'btn green small t sm', onclick: () => { sfx.click(); m.close(); runTutorial(); } }, 'Tutoriel'),
       h('button', { class: 'btn purple small t sm', onclick: async () => { sfx.click(); const v = await prompt('Ton pseudo', '', S.name, 14); if (v) { S.name = v; changed(); Net.pushProfile(); } } }, 'Changer de pseudo'),
       h('button', { class: 'btn red small t sm', onclick: async () => { sfx.click(); if (await ask('Tout effacer ?', 'Ta progression sera perdue pour de bon.', 'Effacer', 'Annuler')) { reset(); location.reload(); } } }, 'Recommencer')),
     p(`Beast Brawl! version 2.0<br>Bruitages créés avec soundza.com<br>Un jeu Michigan · ${Net.online() ? 'Connecté au serveur en ligne' : 'Mode hors ligne'}`, 'small')] });
 }
 export function howTo() {
   modal({ title: 'Comment jouer', color: 'purple', body: [
-    p('1. Le combat dure 3 minutes. Glisse une de tes 4 cartes sur ton côté de l\'arène pour poser l\'animal. Chaque carte coûte de l\'<span style="color:#ff8af0">Aura</span>, qui se recharge toute seule.'),
-    S.settings.camps === false
-      ? p('2. Frappe la <span style="color:var(--gold)">cible du centre</span> : ta jauge monte et celle de l\'adversaire baisse. Jauge pleine = victoire ; sinon, la jauge la plus haute gagne à la fin.')
-      : p('2. Tes animaux foncent vers le camp adverse. <b>Détruis-le pour gagner tout de suite</b> ; sinon, le camp le moins abîmé gagne à la fin. Frappe la <span style="color:var(--gold)">machine du centre</span> : sa catapulte lance un rocher sur le camp adverse. Le camp le plus abîmé recharge son Aura plus vite.'),
-    p('3. <b>Siffler</b> rappelle tes animaux à ta tente pour se soigner. <b>Attaquer</b> : touche ensuite un endroit, une boîte, une tour, un animal ou une cible, et tes animaux foncent dessus. Les tours prises libèrent un orang-outan qui t\'aide.'),
-    p('4. Les victoires rapportent des cages. Ouvre-les pour trouver de nouveaux animaux et des cartes pour les améliorer dans la Collection.', 'small')], buttons: [{ label: 'Compris !', color: 'green' }] });
+    p('1. Le combat dure 3 minutes. Glisse une de tes 4 cartes sur ton côté de l\'arène pour poser l\'animal. Chaque carte coûte de l\'<span style="color:#ff8af0">Aura</span>, qui se recharge toute seule. Les <b>nageurs</b> se posent dans l\'eau de ton camp : seuls les volants et les nageurs les touchent.'),
+    p('2. Tes animaux foncent vers le camp adverse. <b>Détruis-le pour gagner tout de suite</b> ; sinon, le camp le moins abîmé gagne à la fin. Le camp le plus abîmé reçoit un coup de pouce : plus d\'Aura, et sa catapulte tire et se répare plus vite.'),
+    p('3. Ta <span style="color:var(--gold)">catapulte</span> garde ton camp. Touche le bouton <b>Catapulte</b> : le singe la pousse au centre, d\'où elle lance un rocher sur le camp adverse. Cassée, il la répare.'),
+    p('4. <b>Siffler</b> rappelle tes animaux à ta tente pour se soigner. <b>Attaquer</b> : touche ensuite un endroit, une boîte, une tour, la catapulte ou un animal, et tes animaux foncent dessus. Une tour prise : son singe lance des pierres pour toi.'),
+    p('5. Les victoires rapportent des cages. Ouvre-les pour trouver de nouveaux animaux et des cartes pour les améliorer dans la Collection.', 'small')], buttons: [{ label: 'Compris !', color: 'green' }] });
 }
 
 // ---------- profil ----------
@@ -136,20 +137,26 @@ export function wire() {
   onAction('plus-coins', () => exchangePopup('coins')); onAction('plus-paws', () => exchangePopup('paws')); onAction('plus-rubies', () => exchangePopup('rubies'));
 }
 
-// Première visite : on demande un pseudo, puis on explique le jeu. Ensuite : le cadeau du jour s'il attend.
+// Première visite : on demande un pseudo, puis le tutomonkey fait le tutoriel (tour des menus, combat d'entraînement,
+// coffre en bois). Joueurs de la version 1 : leur cage de bienvenue. Les autres : le tutoriel leur est proposé une fois,
+// puis le cadeau du jour s'il attend. (?test : pas de pseudo ni de tutoriel, sauf avec ?tuto)
 export async function firstVisit() {
-  if (new URLSearchParams(location.search).has('test')) { if (!S.name) { S.name = 'Testeur'; changed(); } if (!S.welcome) welcomeChest(); return; }
-  const fresh = !S.name;
-  if (fresh) {
-    const v = await prompt('Bienvenue !', 'Choisis ton pseudo de dresseur', '', 14, 'C\'est parti !');
+  const q = new URLSearchParams(location.search);
+  if (q.has('test') && !q.has('tuto')) { if (!S.name) { S.name = 'Testeur'; changed(); } if (!S.welcome) welcomeChest(); return; }
+  if (!S.name) {
+    const v = q.has('test') ? 'Testeur' : await prompt('Bienvenue !', 'Choisis ton pseudo de dresseur', '', 14, 'C\'est parti !');
     S.name = v || 'Dresseur'; S.seenIntro = true; changed(); Net.pushProfile();
+    await runTutorial();
+    return;
   }
-  if (!S.welcome) {      // nouveaux joueurs et joueurs de la version 1 : une cage pour découvrir les nouveaux animaux
-    await new Promise((res) => modal({ title: fresh ? 'Cadeau !' : 'Mise à jour !', color: 'yellow', closable: false, body: [h('img', { class: 'wel-cage pulse', src: 'assets/chests/icon_sauvage.webp', alt: '' }),
-      p(fresh ? 'Voici une cage pour bien commencer : de nouveaux animaux t\'attendent dedans !' : 'Beast Brawl passe aux combats en temps réel, avec 10 animaux, des cartes et des cages. Voici une cage pour fêter ça !')],
+  if (!S.welcome && S.tuto && S.tuto.started && !S.tuto.chest) { await runTutorial(); return; }      // tutoriel pas fini la dernière fois
+  if (!S.welcome) {      // joueurs de la version 1 : une cage pour découvrir les nouveaux animaux
+    await new Promise((res) => modal({ title: 'Mise à jour !', color: 'yellow', closable: false, body: [h('img', { class: 'wel-cage pulse', src: 'assets/chests/icon_sauvage.webp', alt: '' }),
+      p('Beast Brawl passe aux combats en temps réel, avec des cartes et des cages. Voici une cage pour fêter ça !')],
     buttons: [{ label: 'Ouvrir !', color: 'green' }], onClose: res }));
     await openChestAnim(welcomeChest());
     render();
-    if (fresh) howTo();
-  } else if (dailyReady()) dailyPopup();
+  }
+  if (!S.tuto) await offerTutorial();
+  else if (dailyReady()) dailyPopup();
 }

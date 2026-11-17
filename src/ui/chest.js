@@ -345,8 +345,8 @@ export async function openChestAnim(loot) {
   const title = (a) => {
     if (a <= 0.01) return;
     const z = back(a);
-    drawText(ctx, C.name, CX, 176 - 60 * (1 - z), 72, 'yellow', Math.min(1, a * 1.5));
-    ctx.globalAlpha = Math.min(1, a * 1.5); label(ctx, loot.welcome ? 'Cadeau de bienvenue !' : 'Cage ' + C.tier.toLowerCase(), CX, 262 - 40 * (1 - z), 32, '#f3e6d0'); ctx.globalAlpha = 1;
+    drawText(ctx, loot.title || C.name, CX, 176 - 60 * (1 - z), 72, 'yellow', Math.min(1, a * 1.5));      // title, sub : coffre du tutoriel
+    ctx.globalAlpha = Math.min(1, a * 1.5); label(ctx, loot.sub || (loot.welcome ? 'Cadeau de bienvenue !' : 'Cage ' + C.tier.toLowerCase()), CX, 262 - 40 * (1 - z), 32, '#f3e6d0'); ctx.globalAlpha = 1;
   };
   const icon = (img, x, y, s) => { if (img && img.width) ctx.drawImage(img, x - s / 2, y - s / 2, s, s); };
   const cardIcon = (x, y, s) => { ctx.save(); ctx.translate(x, y); ctx.rotate(-0.16); ctx.fillStyle = '#1a1008'; rr(ctx, -s * 0.36, -s * 0.48, s * 0.72, s * 0.96, s * 0.14); ctx.fill(); ctx.fillStyle = '#4aa8ff'; rr(ctx, -s * 0.29, -s * 0.41, s * 0.58, s * 0.82, s * 0.1); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.beginPath(); ctx.arc(0, s * 0.03, s * 0.14, 0, 6.3); ctx.fill(); ctx.restore(); };

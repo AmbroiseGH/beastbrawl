@@ -10,10 +10,11 @@ const fresh = () => ({
   chests: [null, null, null, null],              // les 4 emplacements de cages : { tier, start, end } ; start = 0 tant qu'elle n'est pas lancée
   chestCycle: 0, welcome: false, seen: {},       // seen : animaux déjà vus (pour « Nouveau ! »)
   shop: { day: '', bought: {} },
-  wins: 0, losses: 0, draws: 0, streak: 0, lossRun: 0, bestStreak: 0, kos: 0, crowns: 0, fights: 0, campFights: 0, upgrades: 0, opened: 0,
+  wins: 0, losses: 0, draws: 0, streak: 0, lossRun: 0, bestStreak: 0, kos: 0, crowns: 0, fights: 0, cataFights: 0, upgrades: 0, opened: 0,
   quests: { day: '', list: [], done: {} }, starter: {}, daily: { last: '', streak: 0 }, firstWinDay: '',
-  settings: { music: true, sfx: true, volume: 0.7, camps: true },      // camps : mode « camps à détruire » (sinon l'ancienne jauge du centre)
+  settings: { music: true, sfx: true, volume: 0.7 },
   clan: null, friends: [], seenIntro: false, mail: [],
+  tuto: null,                                    // tutoriel du tutomonkey : { offered, started, done, chest } (src/ui/tuto.js)
 });
 
 export let S = fresh();

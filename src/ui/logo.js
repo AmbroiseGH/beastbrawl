@@ -8,7 +8,7 @@ import { view } from './stage.js';
 
 const IMG = 'assets/ui/logo_michigan.webp', SOUND = 'assets/audio/logo.mp3', NEXT = 'assets/bg/loading.webp';
 // Le canvas couvre une bande de la scène (941 × 560, à partir de y = 560) ; le logo y est centré.
-const CW = 941, CH = 560, LW = 800, CX = CW / 2, CY = CH / 2;
+const CW = 941, CH = 560, LW = 560, CX = CW / 2, CY = CH / 2;          // logo de 560 px de large (800 avant : trop grand)
 // Calé sur la guitare : arpège jusqu'à 0,45 s (le logo arrive), accord qui sonne (le logo frappe), reflet, éclat, fondu.
 // Les deux fondus de la fin (logo, puis noir) sont des transitions CSS : elles restent fluides même si le jeu calcule.
 const LAND = 0.45, SWEEP0 = 0.52, SWEEP1 = 1.32, GLINT = 1.3, OUT0 = 2.3, FADE = 450;
@@ -93,7 +93,7 @@ function draw(ctx, L, t) {
   // l'éclat final, en haut à droite du N
   const gt = (t - GLINT) / 0.5;
   if (gt > 0 && gt < 1) {
-    const a = Math.sin(Math.PI * gt) * op, gx = 0.962 * w, gy = 0.19 * hh, r = 46 * k * (0.6 + 0.4 * Math.sin(Math.PI * gt));
+    const a = Math.sin(Math.PI * gt) * op, gx = 0.962 * w, gy = 0.19 * hh, r = 46 * (LW / 800) * k * (0.6 + 0.4 * Math.sin(Math.PI * gt));
     ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a;
     const rg = ctx.createRadialGradient(gx, gy, 0, gx, gy, r * 1.4);
     rg.addColorStop(0, 'rgba(255,255,255,.95)'); rg.addColorStop(0.25, 'rgba(255,230,170,.45)'); rg.addColorStop(1, 'rgba(255,220,150,0)');
