@@ -6,7 +6,7 @@ const store = {};
 globalThis.location = { search: '' };
 globalThis.localStorage = { getItem: (k) => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } };
 
-const { createBattle, step, deploy, handOf, summary, command, damage, deployZones, setCata, canDeploy, clampDeploy, TICK, TILE, DURATION, OVERTIME, BASE, SIEGE, CATA_ROAD } = await import('../src/game/rt.js');
+const { createBattle, step, deploy, handOf, summary, command, damage, deployZones, setCata, canDeploy, clampDeploy, TICK, TILE, DURATION, OVERTIME, BASE, SIEGE, CATA_ROAD, GOLD, goldAir } = await import('../src/game/rt.js');
 const { findPath, walkable, swimmable, zoneAt, los } = await import('../src/game/nav.js');
 const { makeAI, aiStep } = await import('../src/game/ai.js');
 const { makeRng } = await import('../src/core/rng.js');
@@ -70,29 +70,30 @@ await test('poser une carte coûte de l\'Aura et respecte la zone de pose (bleue
   const b = createBattle({ decks: [[{ id: 'monkey', level: 1 }, { id: 'kitten', level: 1 }, { id: 'bulldog', level: 1 }, { id: 'clownfish', level: 1 }], [{ id: 'monkey', level: 1 }]], seed: 5 });
   const p = b.players[0], slot = handOf(b, 0).findIndex((c) => c && c.id === 'bulldog');
   assert.equal(p.aura, 5);
-  assert.equal(deploy(b, 0, slot, 767, 230), 'zone', 'pas de pose chez l\'adversaire');
-  assert.equal(deploy(b, 0, slot, 767, 500), 'zone', 'pas de pose au centre');
-  assert.equal(deploy(b, 0, slot, 160, 470), 'zone', 'pas de pose près d\'une tour qu\'on ne tient pas');
-  assert.equal(deploy(b, 0, slot, 572, 940), 'zone', 'pas d\'animal terrestre dans l\'eau');
-  assert.equal(deploy(b, 0, slot, 767, 790), '');
+  assert.equal(deploy(b, 0, slot, 512, 330), 'zone', 'pas de pose chez l\'adversaire');
+  assert.equal(deploy(b, 0, slot, 512, 700), 'zone', 'pas de pose au centre');
+  assert.equal(deploy(b, 0, slot, 230, 700), 'zone', 'pas de pose près d\'une tour qu\'on ne tient pas');
+  assert.equal(deploy(b, 0, slot, 316, 1316), 'zone', 'pas d\'animal terrestre dans l\'eau');
+  assert.equal(deploy(b, 0, slot, 512, 1150), '');
   assert.equal(p.aura, 1);
   const s2 = handOf(b, 0).findIndex((c) => c && c.cost > 1);
-  assert.equal(deploy(b, 0, s2, 767, 790), 'aura');
+  assert.equal(deploy(b, 0, s2, 512, 1150), 'aura');
   assert.equal(b.units.filter((u) => u.side === 0).length, 1);
   p.aura = 10;
   const fs = handOf(b, 0).findIndex((c) => c && c.id === 'clownfish');
   assert.ok(fs >= 0);
-  assert.equal(deploy(b, 0, fs, 767, 790), 'zone', 'pas de nageur sur la terre');
-  assert.equal(deploy(b, 0, fs, 644, 84), 'zone', 'pas de nageur dans l\'eau du camp adverse');
-  assert.ok(canDeploy(b, 0, 572, 940, 'clownfish') && canDeploy(b, 1, 964, 84, 'clownfish'));
-  const q = clampDeploy(b, 0, 767, 790, 'clownfish');
+  assert.equal(deploy(b, 0, fs, 512, 1150), 'zone', 'pas de nageur sur la terre');
+  assert.equal(deploy(b, 0, fs, 340, 212), 'zone', 'pas de nageur dans l\'eau du camp adverse');
+  assert.ok(canDeploy(b, 0, 316, 1316, 'clownfish') && canDeploy(b, 1, 340, 212, 'clownfish'));
+  assert.ok(!canDeploy(b, 0, 300, 1000, 'clownfish'), 'les nageurs se posent près du camp, pas plus loin');
+  const q = clampDeploy(b, 0, 512, 1150, 'clownfish');
   assert.ok(swimmable(q.x, q.y) && canDeploy(b, 0, q.x, q.y, 'clownfish'), 'le doigt qui déborde retombe dans l\'eau du camp');
   assert.equal(deploy(b, 0, fs, q.x, q.y), '');
   assert.equal(b.units.filter((u) => u.aid === 'clownfish').length, 2, 'deux poissons clowns');
 });
 
 await test('les animaux au sol vont d\'une tente à l\'autre par les ponts, les nageurs par la rivière', () => {
-  for (const [x0, y0, x1, y1] of [[767, 800, 767, 190], [767, 800, 160, 520], [600, 780, 1372, 520], [767, 800, 505, 241]]) {
+  for (const [x0, y0, x1, y1] of [[512, 1150, 512, 300], [512, 1150, 230, 700], [420, 1180, 800, 700], [512, 1150, 684, 300]]) {
     const pts = findPath(x0, y0, x1, y1);
     assert.ok(pts && pts.length >= 1);
     let bridge = false, px = x0, py = y0;
@@ -116,7 +117,7 @@ await test('les animaux au sol vont d\'une tente à l\'autre par les ponts, les 
 // ---------- camps et catapultes ----------
 await test('sans ordre ni ennemi en vue, un animal marche vers le camp adverse', () => {
   const b = campBattle(6);
-  deploy(b, 0, 0, 767, 790);
+  deploy(b, 0, 0, 512, 1150);
   run(b, 2);
   const u = b.units.find((x) => x.side === 0);
   assert.equal(u.target, b.camps[1].id);
@@ -124,9 +125,9 @@ await test('sans ordre ni ennemi en vue, un animal marche vers le camp adverse',
 
 await test('au camp, la catapulte bombarde l\'ennemi qui approche, jamais les siens, ni les volants ni les nageurs', () => {
   const b = campBattle(7);
-  deploy(b, 0, 0, 700, 800); deploy(b, 1, 0, 767, 230);
+  deploy(b, 0, 0, 600, 1230); deploy(b, 1, 0, 512, 330);
   const mine = b.units.find((x) => x.side === 0), foe = b.units.find((x) => x.side === 1);
-  foe.x = 767; foe.y = 700; foe.order = { x: 767, y: 700 };          // notre singe est plus près du camp que l'ennemi
+  foe.x = 512; foe.y = 1110; foe.order = { x: 512, y: 1110 };          // notre singe est plus près du camp que l'ennemi
   const c = b.catas[0], targets = [];
   run(b, 4, (e) => { if (e.type === 'cata_fire') { assert.equal(e.side, 0); targets.push(c.target); } });
   assert.ok(targets.length >= 1, 'la catapulte tire');
@@ -136,8 +137,8 @@ await test('au camp, la catapulte bombarde l\'ennemi qui approche, jamais les si
   const b2 = campBattle(8, ['monkey'], ['eagle', 'octo']);
   b2.players[1].aura = 10;
   const h = handOf(b2, 1);
-  deploy(b2, 1, h.findIndex((x) => x && x.id === 'eagle'), 767, 230);
-  const eg = b2.units.find((u) => u.aid === 'eagle'); eg.x = 760; eg.y = 700; eg.spawn = 0; eg.order = { x: 760, y: 700 };
+  deploy(b2, 1, h.findIndex((x) => x && x.id === 'eagle'), 512, 330);
+  const eg = b2.units.find((u) => u.aid === 'eagle'); eg.x = 512; eg.y = 1110; eg.spawn = 0; eg.order = { x: 512, y: 1110 };
   let fired = false;
   run(b2, 3, (e) => { if (e.type === 'cata_fire' && e.side === 0) fired = true; });
   assert.ok(!fired, 'pas de pierre sur un volant');
@@ -150,7 +151,7 @@ await test('la catapulte va au centre puis revient, et du centre elle tire sur l
   run(b, 16, (e) => { if (e.type === 'cata_arrive' && !arrived) arrived = b.t; if (e.type === 'catapult' && !shot) shot = b.t; });
   assert.ok(arrived > 6 && arrived < 12 && c.at === 'centre', 'elle arrive au centre en une dizaine de secondes');
   const [ex, ey] = CATA_ROAD[0][CATA_ROAD[0].length - 1];
-  assert.ok(Math.hypot(c.x - ex, c.y - ey) < 1 && c.x < 767 && c.fy < 0, 'au centre, un peu à gauche, tournée vers le camp rouge');
+  assert.ok(Math.hypot(c.x - ex, c.y - ey) < 1 && c.x < 512 && c.fy < 0, 'au centre, un peu à gauche, tournée vers le camp rouge');
   assert.ok(walkable(c.x, c.y));
   assert.ok(shot > arrived && shot < arrived + 5, 'premier tir peu après l\'arrivée');
   run(b, 2);
@@ -182,7 +183,7 @@ await test('une catapulte cassée ne tire plus et ne se vise plus, puis le singe
   run(b, 1);
   assert.ok(!c.dead && c.hp === c.maxHp, 'réparée, toute neuve');
   // un singe bleu qui monte au centre s'en prend à la catapulte rouge
-  const q = clampDeploy(b, 0, 767, 690);
+  const q = clampDeploy(b, 0, 512, 1000);
   assert.equal(deploy(b, 0, 0, q.x, q.y), '');
   const u = b.units.find((x) => x.side === 0);
   let got = false; run(b, 12, () => { if (u.target === c.id) got = true; });
@@ -221,18 +222,18 @@ await test('les nageurs : seuls les volants et les autres nageurs les touchent, 
   const b = campBattle(16, ['dolphin', 'octo', 'clownfish', 'eagle'], ['monkey', 'orang', 'eagle', 'kitten']);
   b.players[0].aura = 10; b.players[1].aura = 10;
   const h0 = handOf(b, 0), h1 = handOf(b, 1);
-  deploy(b, 0, h0.findIndex((c) => c && c.id === 'dolphin'), 572, 940);
+  deploy(b, 0, h0.findIndex((c) => c && c.id === 'dolphin'), 316, 1316);
   const d = b.units.find((u) => u.aid === 'dolphin'); d.spawn = 0;
-  deploy(b, 1, h1.findIndex((c) => c && c.id === 'orang'), 767, 230);
-  const o = b.units.find((u) => u.aid === 'orang'); o.spawn = 0; o.x = 520; o.y = 860; o.order = { x: 520, y: 860 };    // l'orang-outan au bord de l'eau, à côté du dauphin
+  deploy(b, 1, h1.findIndex((c) => c && c.id === 'orang'), 512, 330);
+  const o = b.units.find((u) => u.aid === 'orang'); o.spawn = 0; o.x = 350; o.y = 1230; o.order = { x: 350, y: 1230 };    // l'orang-outan au bord de l'eau, à côté du dauphin
   assert.ok(walkable(o.x, o.y));
   run(b, 6);
   assert.equal(d.hp, d.maxHp, 'l\'orang-outan (qui vise pourtant les airs) ne peut rien contre le dauphin');
   assert.ok(o.hp < o.maxHp, 'le dauphin, lui, l\'arrose');
   assert.ok(swimmable(d.x, d.y));
   b.players[1].aura = 10;
-  deploy(b, 1, handOf(b, 1).findIndex((c) => c && c.id === 'eagle'), 767, 230);
-  const eg = b.units.find((u) => u.aid === 'eagle'); eg.spawn = 0; eg.x = 560; eg.y = 900; eg.order = { ref: d.id };
+  deploy(b, 1, handOf(b, 1).findIndex((c) => c && c.id === 'eagle'), 512, 330);
+  const eg = b.units.find((u) => u.aid === 'eagle'); eg.spawn = 0; eg.x = 380; eg.y = 1250; eg.order = { ref: d.id };
   const dhp = d.hp, ehp = eg.hp;
   run(b, 4);
   assert.ok(d.hp < dhp, 'l\'aigle touche le dauphin'); assert.equal(eg.hp, ehp, 'le dauphin ne touche pas l\'aigle');
@@ -240,7 +241,7 @@ await test('les nageurs : seuls les volants et les autres nageurs les touchent, 
 });
 
 await test('un nageur descend la rivière et attaque le camp adverse depuis l\'eau (dégâts réduits sur les structures)', () => {
-  for (const [side, x, y] of [[0, 572, 940], [1, 964, 84]]) {
+  for (const [side, x, y] of [[0, 316, 1316], [1, 340, 212]]) {
     const b = campBattle(17 + side, ['octo'], ['octo']);
     deploy(b, side, 0, ...Object.values(clampDeploy(b, side, x, y, 'octo')));
     const u = b.units.find((v) => v.side === side), camp = b.camps[1 - side];
@@ -266,6 +267,37 @@ await test('une boîte cassée donne un bonus au camp qui l\'a cassée', () => {
   for (const k of ['monkey', 'kitten', 'fruit', 'rage', 'aura']) assert.ok(seenB.has(k), 'bonus ' + k);
 });
 
+await test('la boîte dorée tombe du côté du camp mené ; la casser libère le singe doré, qui saute l\'eau et soigne beaucoup les siens', () => {
+  const tie = campBattle(20); tie.t = tie.gold.at + 1; run(tie, 1);
+  assert.ok(!tie.gold.box, 'personne n\'est mené : pas de boîte');
+  for (const side of [0, 1]) {
+    const b = campBattle(21 + side, ['bulldog', 'monkey'], ['bulldog', 'monkey']);
+    assert.ok(b.gold.at >= GOLD.from && b.gold.at <= GOLD.to);
+    b.camps[side].hp = Math.round(b.camps[side].maxHp * 0.7);
+    b.t = b.gold.at - 0.05;
+    let drop = null; run(b, 0.2, (e) => { if (e.type === 'gold_drop') drop = e; });
+    const box = b.gold.box;
+    assert.ok(drop && drop.side === side && box, 'elle tombe chez le camp mené');
+    assert.ok((side === 0 ? box.y > 768 : box.y < 768) && walkable(box.x, box.y) && zoneAt(box.x, box.y) !== 6, 'de son côté, sur la terre ferme');
+    b.players[side].aura = 10;
+    deploy(b, side, handOf(b, side).findIndex((c) => c && c.id === 'bulldog'), ...(side === 0 ? [512, 1150] : [512, 330]));
+    const u = b.units.find((x) => x.side === side); u.spawn = 0; u.hp = Math.round(u.maxHp * 0.3);
+    damage(b, box, box.hp + 5, { side, aid: 'monkey', a: { mult: 1 } });
+    assert.ok(box.dead && b.gold.monkeys.length === 1 && b.gold.monkeys[0].side === side, 'le singe doré sort pour le camp qui l\'a cassée');
+    const m = b.gold.monkeys[0];
+    let healed = 0, thrown = 0, n = 0;
+    while (n < 40 / TICK && !m.gone) {
+      step(b); n++;
+      for (const e of b.events) { if (e.type === 'heal' && e.uid === u.id) healed += e.amount; if (e.type === 'gold_throw') thrown++; }
+      b.events.length = 0;
+      if (!m.gone) assert.ok(walkable(m.x, m.y) || goldAir(m) || !swimmable(m.x, m.y), 'le singe doré ne marche pas dans l\'eau : il saute');
+    }
+    assert.ok(thrown >= 1 && healed >= u.maxHp * 0.4, 'les bananes soignent : +' + healed);
+    assert.ok(m.gone && thrown <= GOLD.bananas, 'il repart après ses bananes');
+    assert.ok(!b.gold.box || b.gold.box === box, 'une seule boîte par combat');
+  }
+});
+
 await test('une tour cassée passe au camp qui l\'a cassée : on peut poser à côté et son singe tire', () => {
   const b = createBattle({ decks: [[{ id: 'monkey', level: 1 }], [{ id: 'monkey', level: 1 }]], seed: 3 });
   const t = b.towers[0];
@@ -273,7 +305,7 @@ await test('une tour cassée passe au camp qui l\'a cassée : on peut poser à c
   assert.equal(t.side, 0); assert.ok(deployZones(b, 0).includes(3));
   assert.ok(b.events.some((e) => e.type === 'tower_take' && e.side === 0));
   b.events.length = 0;
-  assert.equal(deploy(b, 1, 0, 700, 250), '');
+  assert.equal(deploy(b, 1, 0, 300, 400), '');
   let shot = false, n = 0;
   while (!shot && n < 20 / TICK) { step(b); shot = b.events.some((e) => e.type === 'shot' && e.side === 0); b.events.length = 0; n++; }
   assert.ok(shot, 'le singe de la tour lance des pierres sur l\'adversaire');
@@ -281,14 +313,14 @@ await test('une tour cassée passe au camp qui l\'a cassée : on peut poser à c
 
 await test('un ordre d\'attaque envoie l\'animal sur sa cible, Siffler le ramène à la tente', () => {
   const b = createBattle({ decks: [[{ id: 'bulldog', level: 1 }], [{ id: 'monkey', level: 1 }]], seed: 4 });
-  deploy(b, 0, 0, 767, 790);
-  const u = b.units[0], crate = b.crates.find((c) => c.y > 700 && c.x < 700);
+  deploy(b, 0, 0, 512, 1150);
+  const u = b.units[0], crate = b.crates.find((c) => c.y > 768 && c.x < 512);
   assert.equal(command(b, 0, [u.id], { ref: crate.id }), 1);
   let n = 0; while (crate.hp === crate.maxHp && n < 30 / TICK) { step(b); b.events.length = 0; n++; }
   assert.ok(crate.hp < crate.maxHp || crate.dead, 'le bulldog frappe la boîte demandée');
-  command(b, 0, [u.id], { x: 767, y: 560 });
-  n = 0; while (Math.hypot(u.x - 767, u.y - 560) > 20 && n < 30 / TICK) { step(b); b.events.length = 0; n++; }
-  assert.ok(Math.hypot(u.x - 767, u.y - 560) <= 20, 'il va où on l\'envoie');
+  command(b, 0, [u.id], { x: 512, y: 640 });
+  n = 0; while (Math.hypot(u.x - 512, u.y - 640) > 20 && n < 30 / TICK) { step(b); b.events.length = 0; n++; }
+  assert.ok(Math.hypot(u.x - 512, u.y - 640) <= 20, 'il va où on l\'envoie');
   command(b, 0, [u.id], { home: true });
   n = 0; while (Math.hypot(u.x - BASE[0].x, u.y - BASE[0].y) > 4 * TILE && n < 40 / TICK) { step(b); b.events.length = 0; n++; }
   assert.ok(Math.hypot(u.x - BASE[0].x, u.y - BASE[0].y) <= 4 * TILE, 'il rentre à la tente');
@@ -298,7 +330,7 @@ await test('compétences : l\'orang-outan se protège la tête, le cochon empois
   const b = createBattle({ decks: [[{ id: 'orang', level: 1 }, { id: 'pig', level: 1 }, { id: 'elephant', level: 1 }], [{ id: 'monkey', level: 1 }]], seed: 8 });
   b.players[0].aura = 10;
   const slot = (id) => handOf(b, 0).findIndex((c) => c && c.id === id);
-  deploy(b, 0, slot('orang'), 767, 790);
+  deploy(b, 0, slot('orang'), 512, 1150);
   const o = b.units[0]; o.spawn = 0;
   damage(b, o, 50, { side: 1, aid: 'monkey' });
   assert.ok(o.guardT > 0, 'il se protège dès qu\'on le frappe');
@@ -309,7 +341,7 @@ await test('compétences : l\'orang-outan se protège la tête, le cochon empois
   let n = 0; while (!o.poison && n < 2 / TICK) { step(b); b.events.length = 0; n++; }
   assert.ok(o.poison, 'le nuage empoisonne');
   b.players[0].aura = 10;
-  deploy(b, 0, slot('elephant'), 767, 790);
+  deploy(b, 0, slot('elephant'), 512, 1150);
   const el = b.units.find((u) => u.aid === 'elephant');
   n = 0; while (el.water === 0 && n < 25 / TICK) { step(b); b.events.length = 0; n++; }
   assert.ok(el.water > 0, 'l\'éléphant a puisé de l\'eau');

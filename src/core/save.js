@@ -14,7 +14,7 @@ const fresh = () => ({
   quests: { day: '', list: [], done: {} }, starter: {}, daily: { last: '', streak: 0 }, firstWinDay: '',
   settings: { music: true, sfx: true, volume: 0.7 },
   clan: null, friends: [], seenIntro: false, mail: [],
-  tuto: null,                                    // tutoriel du tutomonkey : { offered, started, done, chest } (src/ui/tuto.js)
+  tuto: null,                                    // tutoriel de Barnabé : { offered, started, done, chest } (src/ui/tuto.js)
 });
 
 export let S = fresh();

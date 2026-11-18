@@ -137,7 +137,7 @@ export function wire() {
   onAction('plus-coins', () => exchangePopup('coins')); onAction('plus-paws', () => exchangePopup('paws')); onAction('plus-rubies', () => exchangePopup('rubies'));
 }
 
-// Première visite : on demande un pseudo, puis le tutomonkey fait le tutoriel (tour des menus, combat d'entraînement,
+// Première visite : on demande un pseudo, puis Barnabé fait le tutoriel (tour des menus, combat d'entraînement,
 // coffre en bois). Joueurs de la version 1 : leur cage de bienvenue. Les autres : le tutoriel leur est proposé une fois,
 // puis le cadeau du jour s'il attend. (?test : pas de pseudo ni de tutoriel, sauf avec ?tuto)
 export async function firstVisit() {

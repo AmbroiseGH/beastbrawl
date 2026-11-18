@@ -109,16 +109,14 @@ html.intro #backdrop{opacity:0}
 #scrLogo.out{opacity:0;pointer-events:none}
 #logoCv{position:absolute;left:0;top:560px;width:941px;height:560px;transition:opacity .45s ease-in,transform .45s ease-in;will-change:opacity}
 #logoCv.out{opacity:0;transform:scale(.985)}
-.lg-tap{position:absolute;left:0;right:0;top:1180px;text-align:center;font-size:44px;color:var(--cream);animation:hintBlink .9s ease-in-out infinite alternate}
 
 /* ---------- chargement ---------- */
 #scrLoading{background:#0b1430 url('../assets/bg/loading.webp') center/100% 100% no-repeat}
+.ld-art{position:absolute;left:0;top:0;width:941px;height:1672px;pointer-events:none}
 .ld-bar{position:absolute;left:110px;top:1443px;width:722px;height:70px;overflow:hidden;border-radius:14px;clip-path:polygon(16px 0,calc(100% - 16px) 0,100% 16px,100% calc(100% - 16px),calc(100% - 16px) 100%,16px 100%,0 calc(100% - 16px),0 16px)}
 .ld-fill{width:0;height:100%;background:linear-gradient(#ffe45c,#ffb21e 55%,#f08a0c);box-shadow:inset 0 6px 0 rgba(255,255,255,.55),inset 0 -8px 0 rgba(160,70,0,.4);transition:width .25s ease-out;position:relative;overflow:hidden}
 .ld-fill::after{content:'';position:absolute;inset:0;background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.55) 50%,transparent 70%);background-size:300% 100%;animation:ldShine 1.3s linear infinite}
 @keyframes ldShine{from{background-position:150% 0}to{background-position:-150% 0}}
 .ld-text{position:absolute;left:0;right:0;top:1532px;text-align:center;font-size:40px}
-.ld-text.tap{animation:hintBlink .9s ease-in-out infinite alternate}
 @keyframes hintBlink{from{opacity:.45}to{opacity:1}}
-#scrLoading.tap{cursor:pointer}
 .ld-tip{position:absolute;left:50px;right:50px;top:1590px;text-align:center;font-size:25px;line-height:1.15;color:var(--cream);white-space:normal;-webkit-text-stroke-width:5px;text-shadow:0 3px 0 var(--ink)}

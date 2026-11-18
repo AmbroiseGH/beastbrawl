@@ -1,14 +1,17 @@
 // Ouverture du jeu : le logo Michigan Studios apparaît sur fond noir au son d'une guitare western, puis un reflet
-// balaie les lettres de gauche à droite. Si le navigateur bloque le son (iPhone, première visite…), « Touche l'écran »
-// s'affiche d'abord : le logo apparaît au toucher, avec sa guitare. Ce toucher débloque aussi le son du reste du jeu.
+// balaie les lettres de gauche à droite. Tout part tout seul, sans toucher l'écran. L'animation suit l'horloge du son
+// (ce qu'on entend vraiment, retard du haut-parleur compris) : la lumière tombe pile sur la guitare. Si le navigateur
+// interdit le son avant un premier toucher (iPhone…), le logo passe en silence et le son arrive au premier toucher.
 import { $, wait, TEST } from '../core/utils.js';
 import { S } from '../core/save.js';
-import { loadSound, play, soundAllowed, soundReady, unlock, primeMusic } from '../core/audio.js';
+import { loadSound, soundAllowed, soundReady, playSync, syncClock } from '../core/audio.js';
 import { view } from './stage.js';
 
-const IMG = 'assets/ui/logo_michigan.webp', SOUND = 'assets/audio/logo.mp3', NEXT = 'assets/bg/loading.webp';
+const IMG = 'assets/ui/logo_michigan2.webp', SOUND = 'assets/audio/logo.mp3', NEXT = 'assets/bg/loading.webp';
 // Le canvas couvre une bande de la scène (941 × 560, à partir de y = 560) ; le logo y est centré.
 const CW = 941, CH = 560, LW = 560, CX = CW / 2, CY = CH / 2;          // logo de 560 px de large (800 avant : trop grand)
+// l'éclat final : en haut à droite du N (en fraction de l'image du logo)
+const GLX = 0.972, GLY = 0.085;
 // Calé sur la guitare : arpège jusqu'à 0,45 s (le logo arrive), accord qui sonne (le logo frappe), reflet, éclat, fondu.
 // Les deux fondus de la fin (logo, puis noir) sont des transitions CSS : elles restent fluides même si le jeu calcule.
 const LAND = 0.45, SWEEP0 = 0.52, SWEEP1 = 1.32, GLINT = 1.3, OUT0 = 2.3, FADE = 450;
@@ -93,7 +96,7 @@ function draw(ctx, L, t) {
   // l'éclat final, en haut à droite du N
   const gt = (t - GLINT) / 0.5;
   if (gt > 0 && gt < 1) {
-    const a = Math.sin(Math.PI * gt) * op, gx = 0.962 * w, gy = 0.19 * hh, r = 46 * (LW / 800) * k * (0.6 + 0.4 * Math.sin(Math.PI * gt));
+    const a = Math.sin(Math.PI * gt) * op, gx = GLX * w, gy = GLY * hh, r = 46 * (LW / 800) * k * (0.6 + 0.4 * Math.sin(Math.PI * gt));
     ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a;
     const rg = ctx.createRadialGradient(gx, gy, 0, gx, gy, r * 1.4);
     rg.addColorStop(0, 'rgba(255,255,255,.95)'); rg.addColorStop(0.25, 'rgba(255,230,170,.45)'); rg.addColorStop(1, 'rgba(255,220,150,0)');
@@ -124,25 +127,13 @@ export async function studioLogo() {
   cv.width = Math.round(CW * k); cv.height = Math.round(CH * k);
   const ctx = cv.getContext('2d'), L = prepare(img, k);
 
-  // le son est bloqué : on attend un toucher, qui lance aussi la guitare (dans le toucher même : obligatoire sur iPhone)
-  if (withSound && !soundAllowed() && !(await soundReady(250))) {
-    const tap = $('lgTap'); tap.hidden = false;
-    await new Promise((resolve) => {
-      const go = (e) => {
-        if (e.type === 'keydown' && !['Enter', ' ', 'Escape'].includes(e.key)) return;
-        if (e.type === 'keydown') e.preventDefault();
-        removeEventListener('pointerdown', go); removeEventListener('keydown', go);
-        unlock(); play('logo', { force: true }); primeMusic('menu');
-        tap.hidden = true; resolve();
-      };
-      addEventListener('pointerdown', go); addEventListener('keydown', go);       // toute la surface, bandes noires comprises
-    });
-  } else if (withSound) play('logo');
-
+  // la guitare part si le navigateur le permet (sinon : en silence, sans rien attendre) ; l'image suit le son
+  let at = -1;
+  if (withSound && (soundAllowed() || await soundReady(300))) at = playSync('logo', 0.06);
+  const clock = syncClock(at);
   await new Promise((resolve) => {
-    const t0 = performance.now() + 40;                // le son sort un peu après son départ : l'image l'attend
-    const frame = (now) => {
-      const t = Math.max(0, (now - t0) / 1000);
+    const frame = () => {
+      const t = Math.max(0, clock());
       draw(ctx, L, Math.min(t, OUT0));
       if (t < OUT0) requestAnimationFrame(frame); else resolve();
     };

@@ -1,31 +1,33 @@
 // Le moteur des combats en temps réel sur la grande arène : deux camps (0 = bleu, en bas ; 1 = rouge, en haut), de
 // l'Aura qui se recharge, des animaux posés depuis une main de 4 cartes. On gagne en détruisant le camp adverse (sinon,
 // à la fin du temps, le camp le moins abîmé gagne). Sur la carte :
-//   - une catapulte par camp, poussée par le tutomonkey : au camp, elle bombarde les ennemis qui approchent ; au centre,
+//   - une catapulte par camp, poussée par Barnabé : au camp, elle bombarde les ennemis qui approchent ; au centre,
 //     elle lance des rochers sur le camp adverse. Cassée, le singe la répare sur place ;
 //   - le camp le plus abîmé recharge plus vite son Aura, sa catapulte tire et se répare plus vite ;
 //   - les deux tours latérales : casser la cage libère un singe qui bombarde les animaux adverses ;
 //   - les boîtes : les casser donne un bonus tiré au sort (allié en plus, fruits, rage, Aura) ;
+//   - la boîte dorée : quand le combat dure, elle tombe une fois du côté du camp mené ; qui la casse libère le singe
+//     doré, qui court (il saute les rivières) et lance à ses animaux blessés des bananes dorées qui les soignent beaucoup ;
 //   - la rivière : les animaux aquatiques y sont posés et n'en sortent jamais.
 // Pas de dessin ici : le moteur avance par pas fixes et range dans b.events ce qui s'est passé, pour que l'affichage
-// et les sons suivent. Coordonnées : pixels de la carte (1536 × 1024), y vers le bas. Rien d'aléatoire hors de b.rng.
+// et les sons suivent. Coordonnées : pixels de la carte verticale (1024 × 1536), y vers le bas. Rien d'aléatoire hors de b.rng.
 import { ANIMALS, statsAt, STRUCTS, levelK } from '../data/animals.js';
 import { makeRng } from '../core/rng.js';
 import { MAP_W, MAP_H, CRATES, CELL } from '../data/map.js';
-import { zoneAt, walkable, swimmable, swimHome, swimNear, nearest, findPath, los, waterNear } from './nav.js';
+import { zoneAt, walkable, swimmable, swimHome, campWater, swimNear, nearest, findPath, los, waterNear, bridgeNear, bridgeExit, CLEAR } from './nav.js';
 
 export const TICK = 1 / 30;
-export const TILE = 28;                         // une case, en pixels de la carte
-export const WS = TILE / 52;                    // taille des animaux : pixels de leur planche → pixels de la carte
+export const TILE = 52;                         // une case, en pixels de la carte (l'arène fait environ 15 × 21 cases)
+export const WS = 1.06;                         // taille des animaux : pixels de leur planche → pixels de la carte (taille « Clash Royale »)
 export const DURATION = 180, OVERTIME = 60, DOUBLE_AT = 60;
 export const AURA = { start: 5, max: 10, every: 2.8 };
 export const DEPLOY_DELAY = 1;                  // temps d'arrivée d'un animal posé (s)
-export const BASE = [{ x: 767, y: 800 }, { x: 767, y: 190 }];      // point de ralliement devant chaque tente
+export const BASE = [{ x: 512, y: 1212 }, { x: 512, y: 320 }];     // point de ralliement devant chaque tente
 export const HOME_ZONE = [2, 1];                // zone de pose de chaque camp (voir la grille de src/data/map.js)
 const SIDE_ZONE = { L: 3, R: 4 };
-const TOWER_POS = { L: { x: 163, y: 455, topY: 372 }, R: { x: 1373, y: 455, topY: 372 } };
-export const AIR_H = 30;                        // hauteur de vol
-const REGEN = { r: 4.5, rate: 0.06, calm: 2 };  // près de sa tente (dans l'eau de son camp pour un nageur), un animal au calme récupère
+const TOWER_POS = { L: { x: 81, y: 727, topY: 652 }, R: { x: 943, y: 727, topY: 652 } };
+export const AIR_H = 56;                        // hauteur de vol
+const REGEN = { r: 3, rate: 0.06, calm: 2 };     // près de sa tente (dans l'eau de son camp pour un nageur), un animal au calme récupère
 const HOLD_LEASH = 2.6;                         // un animal posté ne poursuit pas plus loin (cases)
 const BONUS = [['monkey', 22], ['kitten', 18], ['fruit', 25], ['rage', 25], ['aura', 10]];
 export const BONUS_FX = { fruitR: 4, fruit: 0.35, rageR: 4, rage: { dmg: 0.5, speed: 0.3, dur: 8 }, aura: 2 };
@@ -33,22 +35,22 @@ export const CAMPS = {
   hp: 4000,                                     // vie d'un camp (fois le niveau des decks)
   aura: 80,                                     // retard (points) qui fait recharger l'Aura deux fois plus vite (+50 % à mi-chemin)
 };
-// centre du camp (ellipse rx 110, ry 40), point visé par les coups, haut de la tente
-export const CAMP_POS = [{ x: 767, y: 868, aimY: 846, topY: 812 }, { x: 767, y: 88, aimY: 112, topY: 92 }];
-// Les nageurs attaquent un camp depuis ces deux points d'eau (de chaque côté du camp, à la même distance pour les deux camps)
-export const SIEGE = [[[572, 940], [956, 940]], [[644, 84], [892, 84]]];
+// centre du camp (ellipse rx × ry), point visé par les coups, haut de la tente
+export const CAMP_POS = [{ x: 512, y: 1330, rx: 128, ry: 52, aimY: 1306, topY: 1262 }, { x: 512, y: 196, rx: 132, ry: 54, aimY: 214, topY: 120 }];
+// Les nageurs attaquent un camp depuis ces deux points d'eau (le bout de la rivière, de chaque côté du camp)
+export const SIEGE = [[[316, 1316], [708, 1316]], [[340, 212], [684, 212]]];
 // Les catapultes : la route que le singe leur fait suivre, du camp (premier point) au centre (dernier point). Au centre,
 // la bleue se place un peu à gauche, tournée vers le camp rouge, et la rouge un peu à droite, tournée vers le camp bleu.
 export const CATA_ROAD = [
-  [[702, 796], [748, 758], [767, 716], [767, 650], [742, 600], [712, 548]],
-  [[832, 226], [786, 264], [767, 306], [767, 372], [792, 410], [822, 436]],
+  [[440, 1228], [478, 1180], [504, 1132], [512, 1082], [512, 996], [498, 948], [462, 902]],
+  [[584, 306], [546, 354], [520, 404], [512, 456], [512, 540], [526, 588], [562, 634]],
 ];
 export const CATA = {
   hp: 1800,                                     // vie (fois le niveau des decks)
   speed: 1.1,                                   // cases par seconde quand le singe la pousse
   repair: 10,                                   // secondes de réparation une fois cassée
-  rx: 30, ry: 16,                               // taille au sol (ellipse)
-  def: { dmg: 170, every: 2.4, range: 10.5, splash: 1.1, splashMult: 0.6, knock: 0.3 },    // au camp : des pierres sur qui approche
+  rx: 52, ry: 28,                               // taille au sol (ellipse)
+  def: { dmg: 170, every: 2.4, range: 9, splash: 1.1, splashMult: 0.6, knock: 0.3 },       // au camp : des pierres sur qui approche
   atk: { every: 11, hit: 0.05, first: 4 },      // au centre : un rocher toutes les 11 s, 5 % de la vie du camp adverse ; premier tir 4 s après l'arrivée
   wind: 0.42, dur: 0.95,                        // le bras se tend (le tir part à « wind ») puis revient
   catchup: 30,                                  // retard (points) qui fait tirer et réparer deux fois plus vite
@@ -60,12 +62,23 @@ export function behind(b, side) {
 }
 // Coup de pouce de la catapulte du camp mené : elle tire et se répare plus vite (jusqu'à deux fois)
 export const cataBoost = (b, side) => 1 + Math.min(1, behind(b, side) / CATA.catchup);
+// La boîte dorée et son singe
+export const GOLD = {
+  from: 75, to: 105,          // elle tombe entre ces deux instants du combat (s), tirés au sort…
+  gap: 4,                     // … du côté du camp qui a au moins ce retard (sinon on attend ; en mort subite, un côté au hasard)
+  hp: 750, rx: 36, ry: 22,    // vie (fois le niveau des decks), taille au sol
+  speed: 4.6,                 // le singe doré : cases par seconde (il saute par-dessus l'eau)
+  bananas: 8, every: 1.1,     // bananes, temps entre deux lancers
+  reach: 3.2,                 // il lance d'aussi loin (cases)
+  heal: 0.45,                 // une banane rend 45 % de la vie de l'animal
+  life: 30,                   // au plus tard, il s'en va au bout de ce temps (s)
+};
 
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 // distance de bord à bord entre un animal (posé en x, y) et une cible (les structures sont des ellipses). Un nageur
-// attaque un camp depuis ses points d'eau (SIEGE).
+// attaque un camp depuis ses points d'eau (SIEGE), et seulement une fois arrivé dans l'eau de ce camp.
 function edgeAt(u, e, x, y) {
-  if (u.swim && e.kind === 'camp') { let d = Infinity; for (const [sx, sy] of SIEGE[e.side]) d = Math.min(d, Math.hypot(x - sx, y - sy)); return d - u.r - 6; }
+  if (u.swim && e.kind === 'camp') { if (!campWater(e.side, x, y)) return 1e4; let d = Infinity; for (const [sx, sy] of SIEGE[e.side]) d = Math.min(d, Math.hypot(x - sx, y - sy)); return d - u.r - 6; }
   if (e.rx) { const q = Math.hypot((x - e.x) / e.rx, (y - e.y) / e.ry); return (q - 1) * Math.min(e.rx, e.ry) - u.r; }
   return Math.hypot(x - e.x, y - e.y) - u.r - e.r;
 }
@@ -86,7 +99,8 @@ export function createBattle({ decks, towerLevels = [1, 1], seed = 1 }) {
   const rng = makeRng(seed);
   const lv = [towerLevels[0] || 1, towerLevels[1] || 1], lvK = (levelK(lv[0]) + levelK(lv[1])) / 2;
   const b = { t: 0, clock: DURATION, overtime: false, double: false, over: false, winner: -1, endT: 0, why: '', mode: 'camps', camps: null, catas: null,
-    units: [], structs: [], towers: [], crates: [], projs: [], clouds: [], events: [], ents: new Map(), nextId: 1, rng, players: [], levels: lv, lvK };
+    units: [], structs: [], towers: [], crates: [], projs: [], clouds: [], events: [], ents: new Map(), nextId: 1, rng, players: [], levels: lv, lvK, gold: null };
+  { const g = makeRng(seed * 7919 + 13); b.gold = { rng: g, at: GOLD.from + g() * (GOLD.to - GOLD.from), box: null, done: false, monkeys: [] }; }
   for (let s = 0; s < 2; s++) {
     const cards = decks[s].filter((c) => ANIMALS[c.id]).map((c) => ({ id: c.id, level: c.level || 1, cost: ANIMALS[c.id].cost }));
     const order = cards.map((_, i) => i);
@@ -97,18 +111,18 @@ export function createBattle({ decks, towerLevels = [1, 1], seed = 1 }) {
   const add = (o) => { o.id = b.nextId++; o.dead = false; o.air = false; b.structs.push(o); b.ents.set(o.id, o); return o; };
   for (const lane of ['L', 'R']) {
     const P = TOWER_POS[lane], hp = Math.round(STRUCTS.tower.hp * lvK);
-    b.towers.push(add({ kind: 'tower', lane, side: -1, x: P.x, y: P.y, rx: 85, ry: 128, aimX: P.x, aimY: P.y - 20, topY: P.topY, hp, maxHp: hp, taken: 0, cd: 0, shotT: 9, target: 0 }));
+    b.towers.push(add({ kind: 'tower', lane, side: -1, x: P.x, y: P.y, rx: 80, ry: 160, aimX: P.x, aimY: P.y - 20, topY: P.topY, hp, maxHp: hp, taken: 0, cd: 0, shotT: 9, target: 0 }));
   }
-  b.camps = [0, 1].map((s) => { const P = CAMP_POS[s], hp = Math.round(CAMPS.hp * lvK); return add({ kind: 'camp', side: s, x: P.x, y: P.y, rx: 110, ry: 40, aimX: P.x, aimY: P.aimY, topY: P.topY, hp, maxHp: hp, hurtT: 9 }); });
+  b.camps = [0, 1].map((s) => { const P = CAMP_POS[s], hp = Math.round(CAMPS.hp * lvK); return add({ kind: 'camp', side: s, x: P.x, y: P.y, rx: P.rx, ry: P.ry, aimX: P.x, aimY: P.aimY, topY: P.topY, hp, maxHp: hp, hurtT: 9 }); });
   b.catas = [0, 1].map((s) => {
     const R = CATA_ROAD[s], hp = Math.round(CATA.hp * lvK);
     let len = 0; for (let i = 1; i < R.length; i++) len += Math.hypot(R[i][0] - R[i - 1][0], R[i][1] - R[i - 1][1]);
-    return add({ kind: 'cata', side: s, x: R[0][0], y: R[0][1], rx: CATA.rx, ry: CATA.ry, aimX: R[0][0], aimY: R[0][1] - 22, hp, maxHp: hp,
+    return add({ kind: 'cata', side: s, x: R[0][0], y: R[0][1], rx: CATA.rx, ry: CATA.ry, aimX: R[0][0], aimY: R[0][1] - 40, hp, maxHp: hp,
       want: 'camp', at: 'camp', pos: 0, len, fx: 0, fy: s === 0 ? -1 : 1, cd: 1, fire: null, target: 0, repairT: 0, moving: false, hurtT: 9 });
   });
   CRATES.forEach(([x, y], i) => {
     const hp = Math.round(STRUCTS.crate.hp * lvK);
-    b.crates.push(add({ kind: 'crate', n: i, side: -1, x, y: y - 20, rx: 44, ry: 24, aimX: x, aimY: y - 30, hp, maxHp: hp, respawnT: 0 }));
+    b.crates.push(add({ kind: 'crate', n: i, side: -1, x, y: y - 14, rx: 34, ry: 20, aimX: x, aimY: y - 30, hp, maxHp: hp, respawnT: 0 }));
   });
   return b;
 }
@@ -130,7 +144,7 @@ export function canDeploy(b, side, x, y, id = null) {
 }
 // Point de pose le plus proche dans une zone autorisée (pour l'IA et le doigt qui déborde)
 export function clampDeploy(b, side, x, y, id = null) {
-  if (isSwim(id)) return nearest(x, y, (px, py) => swimHome(side, px, py), true) || { x: side === 0 ? 572 : 964, y: side === 0 ? 940 : 84 };
+  if (isSwim(id)) return nearest(x, y, (px, py) => swimHome(side, px, py), true) || { x: SIEGE[side][0][0], y: SIEGE[side][0][1] };
   const p = nearest(x, y, deployZones(b, side)) || { ...BASE[side] };
   for (const c of b.crates) if (!c.dead) {
     const q = Math.hypot((p.x - c.x) / (c.rx + 6), (p.y - c.y) / (c.ry + 6));
@@ -192,7 +206,7 @@ export function command(b, side, ids, o) {
       // chacun sa place autour du point : le premier au centre, les suivants en couronne
       const k = n === 0 ? 0 : 1 + Math.floor((n - 1) / 6), an = n * 1.0472 + k * 0.5, rr = k * 1.15 * TILE;
       let px = Math.max(20, Math.min(MAP_W - 20, o.x + Math.cos(an) * rr)), py = Math.max(20, Math.min(MAP_H - 20, o.y + Math.sin(an) * rr * 0.8));
-      if (!u.air) { const q = nearest(px, py, null, u.swim); if (q) { px = q.x; py = q.y; } }
+      if (!u.air) { const q = u.swim ? nearest(px, py, (x, y) => bridgeNear(x, y) >= CLEAR, true) : nearest(px, py); if (q) { px = q.x; py = q.y; } }
       u.order = { x: px, y: py };
     } else u.order = null;
     u.path = null; u.target = 0; u.healing = false; u.retarget = 0; n++;
@@ -230,6 +244,7 @@ export function step(b) {
   for (const c of b.catas) { updateCata(b, c, dt); if (b.over) return; }
   for (const c of b.camps) c.hurtT += dt;
   for (const c of b.crates) if (c.dead) { c.respawnT -= dt; if (c.respawnT <= 0 && !b.units.some((u) => !u.dead && !u.air && !u.swim && Math.hypot((u.x - c.x) / (c.rx + u.r), (u.y - c.y) / (c.ry + u.r)) < 1)) { c.dead = false; c.hp = c.maxHp; ev(b, { type: 'crate_spawn', id: c.id, x: c.x, y: c.y }); } }
+  updateGold(b, dt);
   advanceProjs(b, dt, false);
   if (b.over) return;
   updateClouds(b, dt);
@@ -273,6 +288,25 @@ function canHit(u, e) {
   return true;                                   // les boîtes : tout le monde peut les frapper
 }
 const aimX = (e) => (e.aimX !== undefined ? e.aimX : e.x), aimY = (e) => (e.aimY !== undefined ? e.aimY : e.y);
+// Le jeu se passe au sol, vu d'en haut : un coup porte aux pieds d'un animal, ou au bord d'une structure, du côté de celui
+// qui frappe (x, y). La hauteur des corps et des images ne sert qu'au dessin (sinon, tout ce qui part vers le haut de
+// l'écran, vers le camp rouge, arriverait plus vite et taperait plus loin que ce qui descend vers le camp bleu).
+function groundAt(e, x, y) {
+  if (!e.rx) return { x: e.x, y: e.y };
+  const dx = x - e.x, dy = y - e.y, q = Math.max(1, Math.hypot(dx / e.rx, dy / e.ry));
+  return { x: e.x + dx / q, y: e.y + dy / q };
+}
+// Où l'on voit un tir direct arriver : sur le corps d'un animal (dessiné au-dessus de ses pieds), sur l'image d'une structure
+const lookY = (e) => (e.kind === 'unit' ? e.y - (e.air ? AIR_H + 15 : e.swim ? 7 : 19) : aimY(e));
+// Un projectile : il court au sol de (gx, gy) vers le point visé (gtx, gty), et l'on dessine (x, y), qui va de la main
+// du tireur (sx, sy) au point où on le voit arriver (tx, ty). tg : la cible, s'il y en a une.
+function addProj(b, pr, gx, gy, tg) {
+  const G = tg && !tg.dead ? groundAt(tg, gx, gy) : { x: pr.tx, y: pr.ty };
+  pr.g0x = pr.gx = gx; pr.g0y = pr.gy = gy; pr.gtx = G.x; pr.gty = G.y; pr.d0 = Math.hypot(G.x - gx, G.y - gy);
+  pr.x = pr.sx; pr.y = pr.sy;
+  b.projs.push(pr);
+  return pr;
+}
 // portée (px) contre cette cible : l'éléphant qui a de l'eau arrose les animaux de loin
 function rangeTo(u, e) {
   const sp = u.s.attacks.special;
@@ -382,6 +416,7 @@ function updateUnit(b, u, dt) {
   if (tgt) {
     const d = edge(u, tgt), R = rangeTo(u, tgt);
     if (d <= R + 5) {
+      if (u.swim && bridgeNear(u.x, u.y) < CLEAR) { const q = bridgeExit(u.x, u.y); if (q) { travel(b, u, q, null, dt); return; } }     // pas sous un pont
       u.moving = false; face(u, aimX(tgt) - u.x, aimY(tgt) - u.y);
       if (u.cd <= 0) startAttack(b, u, tgt, d);
       return;
@@ -400,7 +435,7 @@ function startAttack(b, u, tgt, d) {
   if (A.melee && tgt.kind === 'unit' && d < 1.2 * TILE) a = A.melee;
   else if (A.special && A.special.spray) { if (u.water > 0 && tgt.kind === 'unit' && d > u.s.range * TILE + 5) { a = A.special; special = true; u.water--; } }
   else if (A.special && A.special.every && u.count % A.special.every === 0) { a = A.special; special = true; }
-  u.atk = a; u.atkT = 0; u.hitDone = false; u.atkTarget = tgt.id; u.atkX = aimX(tgt); u.atkY = aimY(tgt); u.atkHeal = u.healing;
+  u.atk = a; u.atkT = 0; u.hitDone = false; u.atkTarget = tgt.id; { const G = groundAt(tgt, u.x, u.y); u.atkX = G.x; u.atkY = G.y; } u.atkHeal = u.healing;
   u.chargeHit = u.charging; u.charging = false; u.run = 0;
   const haste = (u.buff ? 1 + u.buff.speed : 1) * (u.slowT > 0 ? 1 - u.slowK * 0.4 : 1);
   u.cd = u.s.hitEvery / haste;
@@ -410,20 +445,21 @@ function startAttack(b, u, tgt, d) {
 function hit(b, u) {
   const a = u.atk, tgt = b.ents.get(u.atkTarget);
   const live = tgt && !tgt.dead;
-  const tx = live ? aimX(tgt) : u.atkX, ty = live ? aimY(tgt) : u.atkY;
+  const tx = live ? aimX(tgt) : u.atkX, ty = live ? aimY(tgt) : u.atkY, G = live ? groundAt(tgt, u.x, u.y) : { x: u.atkX, y: u.atkY };
   const dmg = u.s.dmg * a.mult * (u.buff ? 1 + u.buff.dmg : 1) * (u.rage ? 1 + u.rage * u.s.attacks.special.rage.add : 1) * (u.chargeHit ? u.s.charge.mult : 1);
   const info = { side: u.side, aid: u.aid, a, dmg, src: u.id, sx: u.x, sy: u.y, charge: u.chargeHit, k: u.s.k, heal: u.atkHeal && a.heal ? a.heal * u.s.k : 0 };
   if (a.shield) shieldAround(b, u, a.shield);
   if (a.proj) {
-    const lift = u.air ? AIR_H + 8 : u.swim ? 8 : 18;
-    const pr = { side: u.side, x: u.x + u.fx * u.r, y: u.y - lift, sx: u.x, sy: u.y - lift, tx, ty, target: live ? tgt.id : 0, speed: a.projSpeed * TILE, key: a.proj, arc: !!a.arc, arcH: 70, info, t: 0 };
-    pr.T = Math.max(0.15, Math.hypot(tx - pr.x, ty - pr.y) / pr.speed);
-    b.projs.push(pr); ev(b, { type: 'proj', id: u.aid, key: a.proj, x: pr.x, y: pr.y });
+    const lift = u.air ? AIR_H + 15 : u.swim ? 15 : 33;
+    const pr = addProj(b, { side: u.side, sx: u.x + u.fx * u.r, sy: u.y - lift, tx: live && !a.arc ? aimX(tgt) : tx, ty: live && !a.arc ? lookY(tgt) : ty, target: live ? tgt.id : 0,
+      speed: a.projSpeed * TILE, key: a.proj, arc: !!a.arc, arcH: 130, info, t: 0 }, u.x, u.y, live ? tgt : null);
+    pr.T = Math.max(0.15, pr.d0 / pr.speed);
+    ev(b, { type: 'proj', id: u.aid, key: a.proj, x: pr.x, y: pr.y });
     return;
   }
-  if (a.spray) { ev(b, { type: 'spray', uid: u.id, x: u.x, y: u.y, tx, ty, left: u.water }); impact(b, info, live ? tgt : null, tx, ty); return; }
-  if (live && edge(u, tgt) <= u.s.range * TILE + 0.8 * TILE) impact(b, info, tgt, tx, ty);
-  else if (a.splash) impact(b, info, null, tx, ty);
+  if (a.spray) { ev(b, { type: 'spray', uid: u.id, x: u.x, y: u.y, tx, ty, left: u.water }); impact(b, info, live ? tgt : null, G.x, G.y); return; }
+  if (live && edge(u, tgt) <= u.s.range * TILE + 0.8 * TILE) impact(b, info, tgt, G.x, G.y);
+  else if (a.splash) impact(b, info, null, G.x, G.y);
   else ev(b, { type: 'miss', uid: u.id, x: tx, y: ty });
   if (a.rage) { u.rage = Math.min(a.rage.max, u.rage + 1); ev(b, { type: 'roar', uid: u.id, x: u.x, y: u.y, n: u.rage, max: a.rage.max }); }
   if (a.plate) { u.plate = Math.min(a.plate.max, u.plate + 1); u.plateT = a.plate.dur; ev(b, { type: 'armor', uid: u.id, x: u.x, y: u.y, n: u.plate, max: a.plate.max }); }
@@ -448,6 +484,7 @@ function impact(b, info, tgt, x, y) {
     }
     if (!info.tower) for (const s of b.structs) {
       if (s === tgt || s.dead || (s.side >= 0 && s.side === info.side)) continue;
+      if (s.kind === 'camp' && tgt && tgt.kind === 'cata') continue;       // la catapulte est juste devant sa tente : frapper l'une n'abîme pas l'autre
       if ((Math.hypot((s.x - cx) / s.rx, (s.y - cy) / s.ry) - 1) * Math.min(s.rx, s.ry) < R) { damage(b, s, info.dmg * a.splashMult * 0.5, info, true); if (b.over) return; }
     }
     ev(b, { type: 'splash', id: info.aid, x: cx, y: cy, r: R, water: !!a.water || !!(A && A.swim), gust: !!a.gust, tower: !!info.tower, cata: !!info.cata, special: !!A && a === A.attacks.special });
@@ -525,6 +562,15 @@ function kill(b, e, info) {
     }
     return;
   }
+  if (e.kind === 'gold') {                     // la boîte dorée éclate : le singe doré sort, pour le camp qui l'a cassée
+    e.dead = true; b.gold.done = true;
+    if (by < 0) return;
+    const m = { kind: 'goldmonkey', id: b.nextId++, side: by, x: e.x, y: e.y + 4, px: e.x, py: e.y + 4, sx: e.x, sy: e.y + 4, dx: 0, dy: 0, s: 0, len: 0, jumps: [],
+      fx: 0, fy: by === 0 ? -1 : 1, t: 0, left: GOLD.bananas, cd: 0.8, target: 0, planT: 0, throwT: 9, moving: false, leaving: 0, gone: false };
+    b.gold.monkeys.push(m);
+    ev(b, { type: 'gold_break', id: e.id, side: by, x: e.x, y: e.y, mid: m.id });
+    return;
+  }
   if (e.kind === 'tower') {                    // la cage (ou le perchoir) cède : la tour change de camp
     if (by < 0) { e.hp = 1; return; }
     const was = e.side;
@@ -594,10 +640,10 @@ function updateTower(b, t, dt) {
   if (!tgt) { t.cd = 0.3; return; }
   t.cd = T.hitEvery; t.target = tgt.id;
   const dmg = Math.round(T.dmg * levelK(b.levels[t.side]));
-  const pr = { side: t.side, x: t.x, y: t.topY, sx: t.x, sy: t.topY, tx: tgt.x, ty: tgt.y, target: tgt.id, key: 'rocks2', arc: true, arcH: 95, track: true, t: 0,
-    info: { side: t.side, aid: null, tower: true, a: { mult: 1, splash: T.splash, splashMult: T.splashMult, knock: T.knock }, dmg, src: t.id, sx: t.x, sy: t.y } };
-  pr.T = Math.max(0.7, Math.min(1.5, Math.hypot(pr.tx - pr.x, pr.ty - pr.y) / (15 * TILE)));
-  b.projs.push(pr); ev(b, { type: 'shot', tid: t.id, side: t.side, x: pr.x, y: pr.y, tx: pr.tx, ty: pr.ty });
+  const pr = addProj(b, { side: t.side, sx: t.x, sy: t.topY, tx: tgt.x, ty: tgt.y, target: tgt.id, key: 'rocks2', arc: true, arcH: 176, track: true, t: 0,
+    info: { side: t.side, aid: null, tower: true, a: { mult: 1, splash: T.splash, splashMult: T.splashMult, knock: T.knock }, dmg, src: t.id, sx: t.x, sy: t.y } }, t.x, t.y, tgt);
+  pr.T = Math.max(0.7, Math.min(1.5, pr.d0 / (15 * TILE)));
+  ev(b, { type: 'shot', tid: t.id, side: t.side, x: pr.x, y: pr.y, tx: pr.tx, ty: pr.ty });
 }
 
 // ---------- les catapultes ----------
@@ -611,7 +657,7 @@ export function roadAt(side, pos) {
   }
   return { x: R[0][0], y: R[0][1], dx: 0, dy: -1 };
 }
-const OWN_HALF = (side, y) => (side === 0 ? y > 512 : y < 512);
+const OWN_HALF = (side, y) => (side === 0 ? y > 768 : y < 768);
 function updateCata(b, c, dt) {
   if (c.fire) {                                   // un tir en cours : le bras se tend, le projectile part, le bras revient
     const f = c.fire; f.t += dt;
@@ -632,7 +678,7 @@ function updateCata(b, c, dt) {
     const d = Math.sign(to - c.pos), v = CATA.speed * TILE * dt;
     c.pos = d > 0 ? Math.min(to, c.pos + v) : Math.max(to, c.pos - v);
     const p = roadAt(c.side, c.pos);
-    c.x = p.x; c.y = p.y; c.aimX = p.x; c.aimY = p.y - 22; c.fx = p.dx * d; c.fy = p.dy * d;
+    c.x = p.x; c.y = p.y; c.aimX = p.x; c.aimY = p.y - 40; c.fx = p.dx * d; c.fy = p.dy * d;
     if (c.pos === to) {
       c.moving = false; c.at = to ? 'centre' : 'camp';
       c.fx = 0; c.fy = c.side === 0 ? -1 : 1;      // à poste, elle regarde vers le camp adverse
@@ -670,24 +716,127 @@ function updateCata(b, c, dt) {
 }
 // Le bras de la catapulte se détend : le rocher part
 function launch(b, c, f) {
-  const sx = c.x + c.fx * 10, sy = c.y - 50;
+  const sx = c.x + c.fx * 17, sy = c.y - 84;
   if (f.atk) {
     const foe = b.camps[1 - c.side]; if (foe.dead) return;
     const dmg = foe.maxHp * CATA.atk.hit;
-    const pr = { side: c.side, x: sx, y: sy, sx, sy, tx: foe.aimX, ty: foe.aimY, target: foe.id, key: 'boulder', arc: true, arcH: 150, track: false, t: 0, T: 1.6,
-      info: { side: c.side, aid: null, catapult: true, a: { mult: 1 }, dmg, src: c.id, sx: c.x, sy: c.y } };
-    b.projs.push(pr); b.players[c.side].shots++;
+    const pr = addProj(b, { side: c.side, sx, sy, tx: foe.aimX, ty: foe.aimY, target: foe.id, key: 'boulder', arc: true, arcH: 280, track: false, t: 0, T: 1.6,
+      info: { side: c.side, aid: null, catapult: true, a: { mult: 1 }, dmg, src: c.id, sx: c.x, sy: c.y } }, c.x, c.y, foe);
+    b.players[c.side].shots++;
     ev(b, { type: 'catapult', side: c.side, cid: c.id, x: sx, y: sy, tx: foe.aimX, ty: foe.aimY, amount: Math.round(dmg), T: pr.T });
     return;
   }
   const tg = b.ents.get(f.target), live = tg && !tg.dead;
   const tx = live ? tg.x : f.tx, ty = live ? tg.y : f.ty, D = CATA.def;
   const dmg = Math.round(D.dmg * levelK(b.levels[c.side]));
-  const pr = { side: c.side, x: sx, y: sy, sx, sy, tx, ty, target: live ? tg.id : 0, key: 'stone', arc: true, arcH: 105, track: true, t: 0,
-    info: { side: c.side, aid: null, tower: true, cata: true, a: { mult: 1, splash: D.splash, splashMult: D.splashMult, knock: D.knock }, dmg, src: c.id, sx: c.x, sy: c.y } };
-  pr.T = Math.max(0.6, Math.min(1.35, Math.hypot(tx - sx, ty - sy) / (13 * TILE)));
-  b.projs.push(pr);
+  const pr = addProj(b, { side: c.side, sx, sy, tx, ty, target: live ? tg.id : 0, key: 'stone', arc: true, arcH: 195, track: true, t: 0,
+    info: { side: c.side, aid: null, tower: true, cata: true, a: { mult: 1, splash: D.splash, splashMult: D.splashMult, knock: D.knock }, dmg, src: c.id, sx: c.x, sy: c.y } }, c.x, c.y, live ? tg : null);
+  pr.T = Math.max(0.6, Math.min(1.35, pr.d0 / (13 * TILE)));
   ev(b, { type: 'cata_fire', side: c.side, cid: c.id, x: sx, y: sy, tx, ty });
+}
+
+// ---------- la boîte dorée et le singe doré ----------
+// Les endroits où la boîte peut tomber, de chaque côté : du sol dégagé (ni pont, ni bord de l'eau), loin du camp, des
+// boîtes, des tours et de la route des catapultes. Calculé une fois.
+let GOLD_SPOTS = null;
+function goldSpots() {
+  if (GOLD_SPOTS) return GOLD_SPOTS;
+  const segD = (x, y, [ax, ay], [bx, by]) => { const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l)) : 0; return Math.hypot(x - ax - t * dx, y - ay - t * dy); };
+  const roadD = (x, y) => { let m = Infinity; for (const R of CATA_ROAD) for (let i = 1; i < R.length; i++) m = Math.min(m, segD(x, y, R[i - 1], R[i])); return m; };
+  GOLD_SPOTS = [0, 1].map((side) => {
+    const out = [], y0 = side === 0 ? 830 : 386, y1 = side === 0 ? 1150 : 706, C = CAMP_POS[side];
+    for (let y = y0; y <= y1; y += 16) for (let x = 60; x <= MAP_W - 60; x += 16) {
+      const z = zoneAt(x, y); if (z < 1 || z > 5) continue;
+      if (![[0, 0], [-44, 0], [44, 0], [0, -34], [0, 34], [-30, 24], [30, 24], [-30, -24], [30, -24]].every(([ox, oy]) => walkable(x + ox, y + oy) && zoneAt(x + ox, y + oy) !== 6)) continue;
+      // l'image de la boîte monte d'environ 80 px : elle ne doit cacher ni un pont ni un mur (un peu d'eau tout en haut, passe)
+      let open = true;
+      for (let oy = -84; oy <= -10 && open; oy += 8) for (let ox = -40; ox <= 40; ox += 10) { const z2 = zoneAt(x + ox, y + oy); if (z2 === 6 || z2 === 0 || (z2 === 7 && oy > -46)) { open = false; break; } }
+      if (!open) continue;
+      if (Math.hypot(x - C.x, y - C.y) < 230 || CRATES.some(([cx, cy]) => Math.hypot(x - cx, y - cy) < 100) || Object.values(TOWER_POS).some((T) => Math.hypot(x - T.x, y - T.y) < 170) || roadD(x, y) < 80) continue;
+      out.push([x, y]);
+    }
+    return out;
+  });
+  return GOLD_SPOTS;
+}
+function updateGold(b, dt) {
+  const G = b.gold;
+  if (!G.box && !G.done && b.t >= G.at) {
+    let side = behind(b, 0) >= GOLD.gap ? 0 : behind(b, 1) >= GOLD.gap ? 1 : -1;
+    if (side < 0 && b.overtime) side = G.rng() < 0.5 ? 0 : 1;
+    const S = side >= 0 ? goldSpots()[side] : null;
+    if (S && S.length) {
+      const [x, y] = S[Math.floor(G.rng() * S.length)], hp = Math.round(GOLD.hp * b.lvK);
+      const o = { kind: 'gold', id: b.nextId++, side: -1, for: side, x, y, rx: GOLD.rx, ry: GOLD.ry, aimX: x, aimY: y - 26, hp, maxHp: hp, dead: false, air: false };
+      b.structs.push(o); b.ents.set(o.id, o); G.box = o;
+      ev(b, { type: 'gold_drop', id: o.id, side, x, y });
+    }
+  }
+  for (const m of G.monkeys) if (!m.gone) goldMonkey(b, m, dt);
+}
+// le singe doré fait route en ligne droite ; là où il n'y a pas de sol (l'eau), il saute : jumps = [début, fin] le long du trajet
+function goldRoute(m, tx, ty) {
+  m.sx = m.x; m.sy = m.y; const dx = tx - m.x, dy = ty - m.y, l = Math.hypot(dx, dy);
+  m.len = l; m.s = 0; m.dx = l ? dx / l : 0; m.dy = l ? dy / l : 0; m.jumps = [];
+  let j0 = -1;
+  for (let s = 0; s <= l; s += 2) {
+    const ok = walkable(m.sx + m.dx * s, m.sy + m.dy * s);
+    if (!ok && j0 < 0) j0 = Math.max(0, s - 12); else if (ok && j0 >= 0) { m.jumps.push([j0, Math.min(l, s + 10)]); j0 = -1; }
+  }
+  if (j0 >= 0) m.jumps.push([j0, l]);
+  if (l > 1) { m.fx = m.dx; m.fy = m.dy; }
+}
+export const goldAir = (m) => m.jumps.some(([a, c]) => m.s > a && m.s < c);
+function goldMonkey(b, m, dt) {
+  m.t += dt; m.px = m.x; m.py = m.y; m.throwT += dt; m.cd -= dt; m.planT -= dt;
+  if (b.over) { m.moving = false; return; }
+  const air = goldAir(m);
+  if (m.leaving) {                                 // il a tout lancé : un dernier saut de joie, et il disparaît
+    m.leaving -= dt; if (m.leaving <= 0 && !air) { m.gone = true; ev(b, { type: 'gold_bye', x: m.x, y: m.y, side: m.side }); return; }
+  } else if ((m.left <= 0 && m.throwT > 0.7) || m.t >= GOLD.life) { m.leaving = 1; ev(b, { type: 'gold_done', x: m.x, y: m.y, side: m.side }); }
+  // la cible : l'allié le plus blessé (qu'une banane ne vise pas déjà), de préférence près de lui
+  let tg = m.target ? b.ents.get(m.target) : null;
+  if (!m.leaving && (!tg || tg.dead || tg.hp >= tg.maxHp * 0.97 || m.planT <= 0)) {
+    tg = null; let bs = -Infinity;
+    for (const u of b.units) {
+      if (u.dead || u.side !== m.side || u.spawn > 0) continue;
+      const miss = 1 - u.hp / u.maxHp; if (miss < 0.06) continue;
+      if (b.projs.some((p) => p.key === 'banana' && p.target === u.id)) continue;
+      const sc = miss * 100 - Math.hypot(u.x - m.x, u.y - m.y) / TILE * 2.5;
+      if (sc > bs) { bs = sc; tg = u; }
+    }
+    m.target = tg ? tg.id : 0; m.planT = 0.6;
+  }
+  // où courir : à portée de lancer de sa cible ; sans blessé, il suit le plus avancé des siens (ou attend devant la tente)
+  let gx = m.x, gy = m.y, reach = GOLD.reach * TILE;
+  if (tg) {
+    const d = Math.hypot(m.x - tg.x, m.y - tg.y);
+    if (d > reach * 0.9 || !walkable(m.x, m.y)) { const k = Math.min(d, reach * 0.7) / (d || 1); gx = tg.x + (m.x - tg.x) * k; gy = tg.y + (m.y - tg.y) * k; }
+  } else if (!m.leaving) {
+    let lead = null, ly = Infinity;
+    for (const u of b.units) if (!u.dead && u.side === m.side && u.spawn <= 0) { const p = m.side === 0 ? u.y : MAP_H - u.y; if (p < ly) { ly = p; lead = u; } }
+    const P = lead || BASE[m.side];
+    if (Math.hypot(m.x - P.x, m.y - P.y) > 2.2 * TILE) { gx = P.x + (m.side === 0 ? 30 : -30); gy = P.y + (m.side === 0 ? 50 : -50); }
+  }
+  if (!walkable(gx, gy)) { const q = nearest(gx, gy); if (q) { gx = q.x; gy = q.y; } }
+  // un nouveau trajet (jamais en plein saut) quand le but a bougé
+  if (!air && Math.hypot(gx - (m.sx + m.dx * m.len), gy - (m.sy + m.dy * m.len)) > 20) goldRoute(m, gx, gy);
+  if (m.s < m.len) {
+    m.s = Math.min(m.len, m.s + GOLD.speed * TILE * dt); m.x = m.sx + m.dx * m.s; m.y = m.sy + m.dy * m.s; m.moving = true;
+  } else m.moving = false;
+  // lancer : une banane en cloche, qui soigne en tombant
+  if (tg && !m.leaving && m.left > 0 && m.cd <= 0 && !goldAir(m)) {
+    const d = Math.hypot(m.x - tg.x, m.y - tg.y);
+    if (d <= reach + (tg.swim ? 1.2 * TILE : 0)) {
+      const amount = Math.round(tg.maxHp * GOLD.heal), sy = m.y - 46;
+      const pr = addProj(b, { side: m.side, sx: m.x, sy, tx: tg.x, ty: tg.y, target: tg.id, key: 'banana', arc: true, arcH: 120, track: true, t: 0,
+        info: { side: m.side, aid: null, heal: amount, gold: true, a: { mult: 1 }, sx: m.x, sy: m.y } }, m.x, m.y, tg);
+      pr.T = Math.max(0.45, Math.min(0.85, d / (8 * TILE)));
+      m.left--; m.cd = GOLD.every; m.throwT = 0; m.planT = 0;
+      if (d > 1) { m.fx = (tg.x - m.x) / d; m.fy = (tg.y - m.y) / d; }
+      ev(b, { type: 'gold_throw', side: m.side, x: m.x, y: m.y, tx: tg.x, ty: tg.y, left: m.left });
+    }
+  }
 }
 
 // ---------- projectiles et nuages ----------
@@ -695,24 +844,30 @@ function advanceProjs(b, dt, frozen) {
   for (let i = b.projs.length - 1; i >= 0; i--) {
     const p = b.projs[i]; p.t += dt;
     const tg = p.target ? b.ents.get(p.target) : null, live = tg && !tg.dead;
-    if (live && (!p.arc || p.track)) { p.tx = aimX(tg); p.ty = aimY(tg) - (tg.kind === 'unit' && !p.arc ? (tg.air ? AIR_H + 8 : tg.swim ? 4 : 10) : 0); }
+    if (live && (!p.arc || p.track)) { const G = groundAt(tg, p.g0x, p.g0y); p.gtx = G.x; p.gty = G.y; p.tx = aimX(tg); p.ty = p.arc ? aimY(tg) : lookY(tg); }
     p.px = p.x; p.py = p.y;
     if (p.arc) {
-      const k = Math.min(1, p.t / p.T); p.x = p.sx + (p.tx - p.sx) * k; p.y = p.sy + (p.ty - p.sy) * k - Math.sin(Math.PI * k) * p.arcH; p.k = k;
+      const k = Math.min(1, p.t / p.T); p.k = k;
+      p.gx = p.g0x + (p.gtx - p.g0x) * k; p.gy = p.g0y + (p.gty - p.g0y) * k;
+      p.x = p.sx + (p.tx - p.sx) * k; p.y = p.sy + (p.ty - p.sy) * k - Math.sin(Math.PI * k) * p.arcH;
       if (k >= 1) { b.projs.splice(i, 1); if (!frozen) land(b, p, tg); }
       continue;
     }
-    const dx = p.tx - p.x, dy = p.ty - p.y, l = Math.hypot(dx, dy), s = p.speed * dt;
+    const dx = p.gtx - p.gx, dy = p.gty - p.gy, l = Math.hypot(dx, dy), s = p.speed * dt;
     if (l <= s || p.t > 3) { b.projs.splice(i, 1); if (!frozen) land(b, p, tg); continue; }
-    p.x += dx / l * s; p.y += dy / l * s; p.ang = Math.atan2(dy, dx);
+    p.gx += dx / l * s; p.gy += dy / l * s;
+    // dessin : de la main du tireur au corps de la cible, au rythme de la course au sol
+    const f = Math.max(0, Math.min(1, 1 - (l - s) / Math.max(1, p.d0)));
+    p.x = p.gx + (p.sx - p.g0x) * (1 - f) + (p.tx - p.gtx) * f; p.y = p.gy + (p.sy - p.g0y) * (1 - f) + (p.ty - p.gty) * f;
+    p.ang = Math.atan2(p.y - p.py, p.x - p.px);
   }
 }
 function land(b, p, tg) {
   const live = tg && !tg.dead;
   ev(b, { type: 'land', key: p.key, x: p.tx, y: p.ty, splash: !!p.info.a.splash, tower: !!p.info.tower, heal: !!p.info.heal, side: p.side, cata: !!p.info.catapult, def: !!p.info.cata, swim: !!(live && tg.swim) });
   if (p.info.heal) { if (live && tg.side === p.side) heal(b, tg, p.info.heal); return; }
-  if (p.info.a.splash) impact(b, p.info, live && Math.hypot(aimX(tg) - p.tx, aimY(tg) - p.ty) < (tg.r || 30) + 16 ? tg : null, p.tx, p.ty);
-  else if (live) impact(b, p.info, tg, p.tx, p.ty);
+  if (p.info.a.splash) { const G = live && groundAt(tg, p.g0x, p.g0y); impact(b, p.info, live && Math.hypot(G.x - p.gtx, G.y - p.gty) < (tg.r || 26) + 30 ? tg : null, p.gtx, p.gty); }
+  else if (live) impact(b, p.info, tg, p.gtx, p.gty);
 }
 function updateClouds(b, dt) {
   for (let i = b.clouds.length - 1; i >= 0; i--) {
@@ -744,7 +899,7 @@ function separate(b) {
       a.x -= dx / l * push * wa; a.y -= dy / l * push * wa; c.x += dx / l * push * wc; c.y += dy / l * push * wc;
     }
     if (la === 0) for (const c of b.structs) {      // les boîtes et les catapultes sont des obstacles : on glisse autour
-      if ((c.kind !== 'crate' || c.dead) && c.kind !== 'cata') continue;
+      if (((c.kind !== 'crate' && c.kind !== 'gold') || c.dead) && c.kind !== 'cata') continue;
       const ex = (a.x - c.x) / (c.rx + a.r * 0.6), ey = (a.y - c.y) / (c.ry + a.r * 0.6), q = Math.hypot(ex, ey);
       if (q < 1) { const k = 1 / Math.max(0.05, q), sx = ex || (a.id % 2 ? 0.05 : -0.05); a.x = c.x + sx * k * (c.rx + a.r * 0.6); a.y = c.y + (ey || 0.05) * k * (c.ry + a.r * 0.6); }
     }
@@ -752,7 +907,7 @@ function separate(b) {
   for (const u of us) {
     if (u.dead) continue;
     if (u.air) {      // les volants restent au-dessus de l'arène
-      const q = Math.hypot((u.x - 768) / 650, (u.y - 512) / 420); if (q > 1) { u.x = 768 + (u.x - 768) / q; u.y = 512 + (u.y - 512) / q; }
+      const q = Math.hypot((u.x - 512) / 470, (u.y - 768) / 700); if (q > 1) { u.x = 512 + (u.x - 512) / q; u.y = 768 + (u.y - 768) / q; }
       continue;
     }
     const ok = u.swim ? swimmable : walkable;

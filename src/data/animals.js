@@ -171,5 +171,5 @@ export function statsAt(id, level = 1) {
 // Structures de la carte. Leurs points de vie suivent le niveau moyen des deux decks.
 export const STRUCTS = {
   crate: { hp: 420, respawn: 50 },                                   // boîte à bonus
-  tower: { hp: 1500, retake: 1.25, dmg: 105, hitEvery: 2.3, range: 21, splash: 1.0, splashMult: 0.5, knock: 0.2 },   // tour latérale et son singe lanceur
+  tower: { hp: 1500, retake: 1.25, dmg: 105, hitEvery: 2.3, range: 8, splash: 1.0, splashMult: 0.5, knock: 0.2 },    // tour latérale et son singe lanceur
 };

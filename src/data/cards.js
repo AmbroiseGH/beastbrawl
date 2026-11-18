@@ -84,7 +84,7 @@ export function rollChest(tier, arena = 1, rng = Math.random) {
 export const WELCOME = { tier: 'sauvage', coins: 150, gems: 0, cards: [{ id: 'kitten', n: 4 }, { id: 'bulldog', n: 3 }, { id: 'pig', n: 1 }], welcome: true };
 // Coffre en bois de la fin du tutoriel (cage rustique) : des communes, dont le poisson clown, et quelques rares. Avec les 2
 // singes, le Singe de départ peut passer au niveau 2 tout de suite.
-export const STARTER = { tier: 'rustique', coins: 200, gems: 0, welcome: true, title: 'Coffre en bois', sub: 'Cadeau du tutomonkey !',
+export const STARTER = { tier: 'rustique', coins: 200, gems: 0, welcome: true, title: 'Coffre en bois', sub: 'Cadeau de Barnabé !',
   cards: [{ id: 'monkey', n: 2 }, { id: 'kitten', n: 4 }, { id: 'bulldog', n: 3 }, { id: 'clownfish', n: 4 }, { id: 'pig', n: 1 }, { id: 'octo', n: 1 }] };
 
 // ---------- boutique : trois offres de cartes du jour, payées en pièces ----------

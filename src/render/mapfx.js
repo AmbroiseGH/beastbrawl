@@ -1,16 +1,17 @@
 // La carte vivante : eau qui miroite et qui coule, cascades, bannières au vent, spectateurs qui sautent dans les
 // tribunes, torches, feuilles et papillons, ombres de nuages. Tout est dessiné par-dessus l'image de fond, en
-// coordonnées de la carte (1536 × 1024) ; rien ici ne touche au jeu lui-même.
+// coordonnées de la carte (1024 × 1536, en hauteur) ; rien ici ne touche au jeu lui-même.
 import { IMG } from '../core/assets.js';
 import { rand } from '../core/utils.js';
 import { MAP_W, MAP_H, MAP_K, CELL, GW, CROWD } from '../data/map.js';
 import { WATER_CELLS } from '../game/nav.js';
 
 // bannières : [x, y, largeur, hauteur] de chaque étoffe dans l'image
-const BANNERS = [[511, 0, 55, 66], [967, 0, 56, 66], [127, 125, 60, 90], [1348, 123, 62, 90], [606, 933, 58, 85], [867, 933, 58, 85], [63, 818, 54, 96], [229, 948, 70, 76], [1419, 818, 56, 96], [1229, 948, 76, 76]];
-const TORCHES = [[378, 33], [1150, 33], [669, 75], [863, 75]];
-const FALLS = [{ x: 325, y: 104, w: 24, h: 52, px: 333, py: 160 }, { x: 1187, y: 104, w: 24, h: 52, px: 1197, py: 160 }];
-const FLOWERS = [[545, 190], [990, 190], [300, 300], [1235, 300], [262, 660], [1272, 660], [540, 820], [1000, 820], [690, 330], [850, 330], [690, 650], [850, 650]];
+const BANNERS = [[322, 2, 60, 96], [642, 2, 60, 96], [58, 192, 64, 110], [902, 192, 64, 110], [40, 1318, 85, 112], [900, 1318, 85, 112], [316, 1376, 76, 104], [632, 1376, 76, 104]];
+const TORCHES = [[272, 82], [752, 82], [373, 180], [651, 180], [30, 1032], [994, 1032], [285, 1268], [740, 1268]];
+// cascades : la bande où l'eau tombe (sl : elle penche de sl pixel par pixel de chute), et le pied de la chute
+const FALLS = [{ x: 214, y: 208, w: 34, h: 56, sl: 0.3, px: 244, py: 278 }, { x: 776, y: 208, w: 34, h: 56, sl: -0.3, px: 780, py: 278 }];
+const FLOWERS = [[255, 352], [769, 352], [300, 590], [724, 590], [156, 844], [868, 844], [412, 440], [612, 440], [300, 1080], [724, 1080], [412, 1110], [612, 1110]];
 
 // Tuile de reflets (réseau de lignes claires qui se raccorde sur ses bords), calculée une fois
 function causticTile(n = 128, cells = 4) {
@@ -36,7 +37,7 @@ export class MapFx {
     this.t = 0; this.cheer = 0; this.tile = null; this.wc = null; this.glints = []; this.leaves = []; this.embers = []; this.streaks = []; this.rings = [];
     this.crowd = CROWD.map(([x, y], i) => ({ x, y, ph: (i * 2.399) % 6.283, sp: 3.2 + ((i * 7) % 10) * 0.22, amp: 1.2 + ((i * 13) % 7) * 0.22, hop: 0 }));
     this.flies = FLOWERS.slice(0, 7).map(([x, y], i) => ({ hx: x, hy: y, x, y, ph: i * 1.7, col: ['#ffd23f', '#ff8ad8', '#8fdcff', '#ffffff', '#ffa24a'][i % 5] }));
-    this.clouds = [0, 1, 2].map((i) => ({ x: 200 + i * 560, y: 180 + i * 300, r: 230 + i * 40, v: 9 + i * 3 }));
+    this.clouds = [0, 1, 2].map((i) => ({ x: 100 + i * 380, y: 260 + i * 480, r: 210 + i * 30, v: 9 + i * 3 }));
   }
   reset() { this.glints.length = 0; this.leaves.length = 0; this.embers.length = 0; this.streaks.length = 0; this.rings.length = 0; this.cheer = 0; }
   // les tribunes s'enflamment (k de 0 à 1) : tour prise, jauge qui grimpe, fin du combat
@@ -74,22 +75,22 @@ export class MapFx {
       const [x, y] = TORCHES[i]; if (x < R.x0 - 60 || x > R.x1 + 60 || y < R.y0 - 60 || y > R.y1 + 60) continue;
       const f = 0.75 + 0.15 * Math.sin(t * 13 + i * 2) + 0.1 * Math.sin(t * 29 + i);
       c.globalCompositeOperation = 'lighter';
-      const g = c.createRadialGradient(x, y, 1, x, y, 34 * f); g.addColorStop(0, `rgba(255,210,110,${0.55 * f})`); g.addColorStop(0.4, `rgba(255,140,40,${0.22 * f})`); g.addColorStop(1, 'rgba(255,90,0,0)');
-      c.fillStyle = g; c.fillRect(x - 36, y - 36, 72, 72);
+      const g = c.createRadialGradient(x, y, 1, x, y, 48 * f); g.addColorStop(0, `rgba(255,210,110,${0.55 * f})`); g.addColorStop(0.4, `rgba(255,140,40,${0.22 * f})`); g.addColorStop(1, 'rgba(255,90,0,0)');
+      c.fillStyle = g; c.fillRect(x - 50, y - 50, 100, 100);
       // flamme : deux gouttes qui dansent
       for (let k = 0; k < 2; k++) {
-        const hh = (9 + 3 * Math.sin(t * 17 + i + k * 2)) * (k ? 0.6 : 1), ww = (4.2 - k * 1.6), sx = Math.sin(t * 11 + i * 3 + k) * 1.2;
+        const hh = (13 + 4 * Math.sin(t * 17 + i + k * 2)) * (k ? 0.6 : 1), ww = (5.8 - k * 2.2), sx = Math.sin(t * 11 + i * 3 + k) * 1.7;
         c.fillStyle = k ? 'rgba(255,250,200,.85)' : 'rgba(255,170,40,.75)';
         c.beginPath(); c.moveTo(x - ww, y + 3); c.quadraticCurveTo(x - ww * 1.2, y - hh * 0.4, x + sx, y - hh); c.quadraticCurveTo(x + ww * 1.2, y - hh * 0.4, x + ww, y + 3); c.closePath(); c.fill();
       }
       c.globalCompositeOperation = 'source-over';
-      if (Math.random() < dt * 5) this.embers.push({ x: x + rand(-3, 3), y: y - 4, vx: rand(-5, 5), vy: rand(-22, -12), age: 0, life: rand(0.6, 1.3) });
+      if (Math.random() < dt * 5) this.embers.push({ x: x + rand(-4, 4), y: y - 6, vx: rand(-7, 7), vy: rand(-30, -16), age: 0, life: rand(0.6, 1.3) });
     }
     c.globalCompositeOperation = 'lighter';
     for (let i = this.embers.length - 1; i >= 0; i--) {
       const e = this.embers[i]; e.age += dt; if (e.age >= e.life) { this.embers.splice(i, 1); continue; }
       e.x += (e.vx + Math.sin(t * 6 + i) * 6) * dt; e.y += e.vy * dt;
-      c.fillStyle = `rgba(255,${170 + Math.round(60 * (1 - e.age / e.life))},60,${0.9 * (1 - e.age / e.life)})`; c.fillRect(e.x - 0.8, e.y - 0.8, 1.6, 1.6);
+      c.fillStyle = `rgba(255,${170 + Math.round(60 * (1 - e.age / e.life))},60,${0.9 * (1 - e.age / e.life)})`; c.fillRect(e.x - 1.2, e.y - 1.2, 2.4, 2.4);
     }
     c.globalCompositeOperation = 'source-over';
   }
@@ -118,7 +119,7 @@ export class MapFx {
     const G = this.glints;
     if (G.length < 26 && WATER_CELLS.length) for (let k = 0; k < 2; k++) {
       const cell = WATER_CELLS[Math.floor(Math.random() * WATER_CELLS.length)], gx = (cell % GW + Math.random()) * CELL, gy = (Math.floor(cell / GW) + Math.random()) * CELL;
-      if (gx > R.x0 && gx < R.x1 && gy > R.y0 && gy < R.y1) G.push({ x: gx, y: gy, age: 0, life: rand(0.6, 1.4), s: rand(3, 7) });
+      if (gx > R.x0 && gx < R.x1 && gy > R.y0 && gy < R.y1) G.push({ x: gx, y: gy, age: 0, life: rand(0.6, 1.4), s: rand(4, 9) });
     }
     for (let i = G.length - 1; i >= 0; i--) {
       const q = G[i]; q.age += 1 / 60; if (q.age >= q.life) { G.splice(i, 1); continue; }
@@ -134,21 +135,22 @@ export class MapFx {
     for (let i = 0; i < FALLS.length; i++) {
       const F = FALLS[i]; if (F.x > R.x1 + 40 || F.x + F.w < R.x0 - 40 || F.y > R.y1 + 80 || F.y + F.h < R.y0 - 40) continue;
       if (Math.random() < dt * 34) this.streaks.push({ f: i, x: F.x + rand(2, F.w - 2), y: F.y + rand(0, 8), v: rand(70, 110), len: rand(6, 14), a: rand(0.35, 0.8) });
-      if (Math.random() < dt * 2.2) this.rings.push({ x: F.px + rand(-6, 6), y: F.py + rand(-2, 3), age: 0, life: rand(0.9, 1.5) });
+      if (Math.random() < dt * 2.2) this.rings.push({ x: F.px + rand(-8, 8), y: F.py + rand(-2, 4), age: 0, life: rand(0.9, 1.5) });
       // écume au pied de la chute
       c.fillStyle = 'rgba(255,255,255,.75)';
-      for (let k = 0; k < 6; k++) { const a = t * 3 + k * 1.05 + i, r = 2.2 + 1.2 * Math.sin(t * 7 + k * 2); c.beginPath(); c.arc(F.px + Math.cos(a) * 9 * (0.5 + 0.5 * Math.sin(k * 3 + t)), F.py - 3 + Math.sin(a * 1.3) * 2.5, r, 0, 6.3); c.fill(); }
+      for (let k = 0; k < 7; k++) { const a = t * 3 + k * 0.9 + i, r = 3 + 1.6 * Math.sin(t * 7 + k * 2); c.beginPath(); c.arc(F.px + Math.cos(a) * 14 * (0.5 + 0.5 * Math.sin(k * 3 + t)), F.py - 4 + Math.sin(a * 1.3) * 3.5, r, 0, 6.3); c.fill(); }
     }
     c.lineCap = 'round';
     for (let i = this.streaks.length - 1; i >= 0; i--) {
-      const s = this.streaks[i], F = FALLS[s.f]; s.y += s.v * dt;
+      const s = this.streaks[i], F = FALLS[s.f]; s.y += s.v * dt; s.x += s.v * dt * F.sl;
       if (s.y > F.y + F.h) { this.streaks.splice(i, 1); continue; }
-      c.strokeStyle = `rgba(255,255,255,${s.a})`; c.lineWidth = 1.5; c.beginPath(); c.moveTo(s.x, s.y); c.lineTo(s.x, Math.min(F.y + F.h, s.y + s.len)); c.stroke();
+      const e = Math.min(F.y + F.h, s.y + s.len);
+      c.strokeStyle = `rgba(255,255,255,${s.a})`; c.lineWidth = 2; c.beginPath(); c.moveTo(s.x, s.y); c.lineTo(s.x + (e - s.y) * F.sl, e); c.stroke();
     }
     for (let i = this.rings.length - 1; i >= 0; i--) {
       const r = this.rings[i]; r.age += dt; if (r.age >= r.life) { this.rings.splice(i, 1); continue; }
-      const k = r.age / r.life; c.strokeStyle = `rgba(255,255,255,${0.55 * (1 - k)})`; c.lineWidth = 1.2;
-      c.beginPath(); c.ellipse(r.x, r.y, 5 + 20 * k, (5 + 20 * k) * 0.42, 0, 0, 6.3); c.stroke();
+      const k = r.age / r.life; c.strokeStyle = `rgba(255,255,255,${0.55 * (1 - k)})`; c.lineWidth = 1.8;
+      c.beginPath(); c.ellipse(r.x, r.y, 8 + 32 * k, (8 + 32 * k) * 0.42, 0, 0, 6.3); c.stroke();
     }
     c.lineCap = 'butt';
   }
@@ -159,22 +161,22 @@ export class MapFx {
   sky(c, R, dt) {
     const t = this.t;
     for (const f of this.flies) {
-      f.x = f.hx + Math.sin(t * 0.7 + f.ph) * 26 + Math.sin(t * 1.9 + f.ph * 2) * 8; f.y = f.hy - 12 + Math.cos(t * 0.9 + f.ph) * 14 + Math.sin(t * 2.3 + f.ph) * 5;
+      f.x = f.hx + Math.sin(t * 0.7 + f.ph) * 36 + Math.sin(t * 1.9 + f.ph * 2) * 11; f.y = f.hy - 17 + Math.cos(t * 0.9 + f.ph) * 20 + Math.sin(t * 2.3 + f.ph) * 7;
       if (f.x < R.x0 - 10 || f.x > R.x1 + 10 || f.y < R.y0 - 10 || f.y > R.y1 + 10) continue;
       const fl = Math.abs(Math.sin(t * 14 + f.ph)) * 0.85 + 0.15;
-      c.fillStyle = 'rgba(20,10,30,.25)'; c.beginPath(); c.ellipse(f.x + 3, f.y + 12, 3, 1.3, 0, 0, 6.3); c.fill();
+      c.fillStyle = 'rgba(20,10,30,.25)'; c.beginPath(); c.ellipse(f.x + 5, f.y + 20, 5, 2.2, 0, 0, 6.3); c.fill();
       c.fillStyle = f.col;
-      c.beginPath(); c.ellipse(f.x - 2.4 * fl, f.y, 2.6 * fl, 3.2, -0.3, 0, 6.3); c.ellipse(f.x + 2.4 * fl, f.y, 2.6 * fl, 3.2, 0.3, 0, 6.3); c.fill();
-      c.fillStyle = '#2a1a10'; c.fillRect(f.x - 0.5, f.y - 2.5, 1, 5);
+      c.beginPath(); c.ellipse(f.x - 4 * fl, f.y, 4.4 * fl, 5.4, -0.3, 0, 6.3); c.ellipse(f.x + 4 * fl, f.y, 4.4 * fl, 5.4, 0.3, 0, 6.3); c.fill();
+      c.fillStyle = '#2a1a10'; c.fillRect(f.x - 0.8, f.y - 4.2, 1.6, 8.4);
     }
     const L = this.leaves;
-    if (L.length < 16 && Math.random() < dt * 2.6) L.push({ x: rand(R.x0, R.x1 + 120), y: R.y0 - 12 + rand(0, (R.y1 - R.y0) * 0.5), vx: rand(-34, -16), vy: rand(12, 26), rot: rand(0, 6), vr: rand(-3, 3), age: 0, life: rand(5, 9), s: rand(2.6, 4.4), col: ['#7ed321', '#b8e04a', '#f5c04a', '#5fbf3a', '#ff9a4a'][Math.floor(Math.random() * 5)], ph: rand(0, 6) });
+    if (L.length < 16 && Math.random() < dt * 2.6) L.push({ x: rand(R.x0, R.x1 + 120), y: R.y0 - 12 + rand(0, (R.y1 - R.y0) * 0.5), vx: rand(-46, -22), vy: rand(16, 36), rot: rand(0, 6), vr: rand(-3, 3), age: 0, life: rand(5, 9), s: rand(4, 6.6), col: ['#7ed321', '#b8e04a', '#f5c04a', '#5fbf3a', '#ff9a4a'][Math.floor(Math.random() * 5)], ph: rand(0, 6) });
     for (let i = L.length - 1; i >= 0; i--) {
       const l = L[i]; l.age += dt; if (l.age >= l.life || l.x < R.x0 - 40 || l.y > R.y1 + 30) { L.splice(i, 1); continue; }
-      const sway = Math.sin(t * 2.2 + l.ph); l.x += (l.vx + sway * 14) * dt; l.y += (l.vy + Math.cos(t * 2.2 + l.ph) * 6) * dt; l.rot += (l.vr + sway * 2) * dt;
+      const sway = Math.sin(t * 2.2 + l.ph); l.x += (l.vx + sway * 20) * dt; l.y += (l.vy + Math.cos(t * 2.2 + l.ph) * 8) * dt; l.rot += (l.vr + sway * 2) * dt;
       const a = Math.min(1, l.age * 2, (l.life - l.age) * 1.5);
       c.save(); c.translate(l.x, l.y); c.rotate(l.rot); c.scale(1, 0.45 + 0.4 * Math.abs(Math.sin(t * 3 + l.ph)));
-      c.globalAlpha = a * 0.3; c.fillStyle = '#140a1e'; c.beginPath(); c.ellipse(4, 22, l.s, l.s * 0.5, 0, 0, 6.3); c.fill();
+      c.globalAlpha = a * 0.3; c.fillStyle = '#140a1e'; c.beginPath(); c.ellipse(6, 32, l.s, l.s * 0.5, 0, 0, 6.3); c.fill();
       c.globalAlpha = a; c.fillStyle = l.col; c.beginPath(); c.moveTo(-l.s, 0); c.quadraticCurveTo(0, -l.s * 0.9, l.s, 0); c.quadraticCurveTo(0, l.s * 0.9, -l.s, 0); c.fill();
       c.strokeStyle = 'rgba(40,70,10,.5)'; c.lineWidth = 0.4; c.beginPath(); c.moveTo(-l.s, 0); c.lineTo(l.s, 0); c.stroke();
       c.restore();

@@ -24,9 +24,10 @@ import { arenaOf, ARENAS } from '../data/economy.js';
 import { createBattle, step, TICK, TILE, WS, deploy, command, canDeploy, clampDeploy, forfeit, summary, handOf, BONUS_FX, CATA, setCata } from '../game/rt.js';
 import { makeAI, aiStep } from '../game/ai.js';
 import { swimmable } from '../game/nav.js';
+import { MAP_W, MAP_H } from '../data/map.js';
 import { newSeed } from '../core/rng.js';
 import { applyFight, deckLevels } from '../game/progress.js';
-import { View, textCanvas, HUD, FH, ZOOM, W, AIR_LIFT } from '../render/view.js';
+import { View, textCanvas, HUD, FH, ZOOM, W, VY, AIR_LIFT } from '../render/view.js';
 import { view as stageView, toStage, onResize, setBackdrop } from './stage.js';
 import { showMenu } from './menu.js';
 import { toast, fly, rewardHtml, TARGET, ask } from './ui.js';
@@ -39,7 +40,8 @@ let V = null, B = null, raf = 0, busy = false, lastT = 0;
 // picked : nos animaux choisis ; pickNew : le prochain toucher sur un de nos animaux recommence le choix ;
 // aim : flèche d'un ordre qu'on trace ; g : geste en cours sur l'arène ; pts : doigts posés ; pinch : zoom à deux doigts
 // edgeT : depuis combien de temps une carte ou une flèche est tenue au bord (l'arène défile de plus en plus vite)
-const U = { sel: -1, drag: null, hint: '', hintT: 0, mode: false, picked: new Set(), pickNew: true, aim: null, hover: 0, g: null, pts: new Map(), pinch: null, mini: false, fling: null, zoneT: 0, edgeT: 0 };
+// zoneT : la zone de pose reste affichée ce temps-là ; zoneSwim : c'est l'eau du camp (les nageurs) que le tutoriel montre
+const U = { sel: -1, drag: null, hint: '', hintT: 0, mode: false, picked: new Set(), pickNew: true, aim: null, hover: 0, g: null, pts: new Map(), pinch: null, mini: false, fling: null, zoneT: 0, zoneSwim: false, edgeT: 0 };
 const LIFT = AIR_LIFT * WS;                        // hauteur de vol, en pixels de la carte
 const isSwim = (id) => !!(id && ANIMALS[id] && ANIMALS[id].swim);
 
@@ -100,16 +102,16 @@ function enter(opp, mode, mine, arena, guide) {
   const b = createBattle({ decks: [mine, opp.deck], towerLevels: [lv(mine), lv(opp.deck)], seed: newSeed() });
   if (mode === 'demo') { const cp = b.camps[1]; cp.maxHp = cp.hp = Math.round(cp.maxHp * 0.55); }      // le camp du bot d'entraînement tombe plus vite
   B = { b, mode, opp, arena, acc: 0, ai: makeAI(1, opp.skill), endShown: false, party: false, sec: 99, tips: guide ? [] : tipsFor(), thr: {}, intro: TEST ? 0 : 1.1, guide, cataGlow: 0, seen: {}, ham: [0, 0] };
-  Object.assign(U, { sel: -1, drag: null, mode: false, picked: new Set(), pickNew: true, aim: null, hover: 0, g: null, pinch: null, mini: false, fling: null, zoneT: 0, edgeT: 0 });
+  Object.assign(U, { sel: -1, drag: null, mode: false, picked: new Set(), pickNew: true, aim: null, hover: 0, g: null, pinch: null, mini: false, fling: null, zoneT: 0, zoneSwim: false, edgeT: 0 });
   U.pts.clear();
   if (!guide) say('Glisse une carte dans ta zone bleue', 6);
   $('scrMenu').hidden = true; $('scrBattle').hidden = false; setBackdrop(IMG.mini || IMG['field' + arena]);
   const hud = $('bHud'); hud.textContent = '';
   hud.append(h('button', { class: 'icbtn bflag', 'aria-label': 'Abandonner', onclick: quit }));
   music(ARENAS[arena - 1].music);
-  // la caméra montre toute l'arène, puis descend sur notre camp
-  V.cam.x = 767; V.cam.y = 512; V.cam.z = ZOOM.min; V.clampCam(V.cam);
-  if (TEST) { V.cam.y = 640; V.cam.z = ZOOM.start; V.clampCam(V.cam); }
+  // la caméra part de près, sur le centre de l'arène, puis recule jusqu'à la montrer toute (voir loop)
+  V.cam.x = MAP_W / 2; V.cam.y = MAP_H / 2; V.cam.z = 1.32; V.clampCam(V.cam);
+  if (TEST) { V.cam.y = MAP_H; V.cam.z = ZOOM.start; V.clampCam(V.cam); }
   V.banner('COMBAT !', { size: 150, tint: 'orange', life: 1.3, y: 700 }); play('fight_start'); play('horn', { at: 0.15, v: 0.7 });
   V.banner('Détruis le camp adverse !', { size: 44, tint: 'white', life: 1.9, y: 800, delay: 0.35 });
   V.shake = 10; V.mapfx.excite(1);
@@ -129,12 +131,30 @@ function guideApi() {
     get b() { return B && B.b; }, get view() { return V; }, get ui() { return U; },
     say, glowCata(t = 6) { if (B) B.cataGlow = t; }, look(x, y, z) { V.lookAt(x, y, z || ZOOM.start); },
     ping(x, y, col) { V.ping(x, y, col || '#ffd23f'); },
+    // Barnabé explique : le combat se fige (plus rien ne bouge ni ne se joue, la caméra reste libre) ; le geste en cours
+    // est abandonné (la carte tenue retourne dans la main)
+    freeze(on) {
+      if (!B) return;
+      B.frozen = !!on;
+      if (on) { if (U.aim) endAim(false); Object.assign(U, { drag: null, g: null, pinch: null, mini: false, fling: null, sel: -1, edgeT: 0 }); U.pts.clear(); }
+    },
+    // la caméra va montrer (x, y) de la carte au zoom z, à la hauteur sy de l'écran (au mieux : elle ne sort pas de l'arène) ;
+    // rend l'endroit de l'écran où (x, y) se trouvera
+    focus(x, y, z, sy = VY) {
+      const zz = clamp(z, ZOOM.min, ZOOM.max), t = V.clampCam({ x, y: y - (sy - VY) / zz, z: zz });
+      V.lookAt(t.x, t.y, t.z);
+      return { x: (x - t.x) * t.z + W / 2, y: (y - t.y) * t.z + VY };
+    },
+    camSave() { const c = V.camT || V.cam; return { x: c.x, y: c.y, z: c.z }; },
+    camBack(c) { V.lookAt(c.x, c.y, c.z); },
+    // la zone de pose reste affichée (swim : l'eau du camp, pour les nageurs) ; t : pendant ce temps (0 : on l'enlève)
+    zone(t, swim = false) { U.zoneT = t; U.zoneSwim = t > 0 && swim; },
   };
 }
 // Astuces des premiers combats (temps de jeu, texte), montrées quand rien d'autre n'est affiché. Le 3e élément marque ce qui
 // est nouveau avec les catapultes : montré aussi, deux combats, aux joueurs qui connaissent déjà le jeu.
 const TIPS = [[9, 'Fais glisser l\'arène pour la parcourir'], [15, 'Détruis le camp rouge, tout en haut, pour gagner', 1], [26, 'Touche un de tes animaux, puis sa cible'],
-  [36, 'Touche « Catapulte » : le singe la pousse au centre', 1], [52, 'Au centre, elle tire sur le camp adverse. Protège-la !', 1],
+  [36, 'Touche « Catapulte » : Barnabé la pousse au centre', 1], [52, 'Au centre, elle tire sur le camp adverse. Protège-la !', 1],
   [68, 'Casse les boîtes : elles cachent des bonus'], [82, 'Prends les tours : leur singe lance des pierres pour toi', 1], [98, 'Siffler : tes animaux rentrent se soigner']];
 function tipsFor() {
   return S.fights < 3 ? TIPS.slice() : (S.cataFights || 0) < 2 ? TIPS.filter((x) => x[2]) : [];
@@ -164,15 +184,17 @@ function unitAt(w, side, tolPx = 26) {
 // Une catapulte sous le doigt (son bâti, des roues au haut du bras)
 function cataAt(w, side, tolPx = 20) {
   const k = B.b.catas[side], tol = tolPx / V.cam.z;
-  return Math.abs(w.x - k.x) < 42 + tol && w.y > k.y - 84 - tol && w.y < k.y + 16 + tol ? k : null;
+  return Math.abs(w.x - k.x) < 62 + tol && w.y > k.y - 120 - tol && w.y < k.y + 20 + tol ? k : null;
 }
-// Ce qu'on peut viser sous le doigt : un animal adverse, une boîte, une tour qui n'est pas à nous, la catapulte ou le camp adverse
+// Ce qu'on peut viser sous le doigt : un animal adverse, une boîte (la dorée aussi), une tour qui n'est pas à nous, la
+// catapulte ou le camp adverse
 function targetAt(w) {
   const b = B.b, tol = 24 / V.cam.z;
   const u = unitAt(w, 1); if (u && u.spawn <= 0) return u;
   const k = cataAt(w, 1); if (k && !k.dead) return k;
+  const gb = b.gold && b.gold.box; if (gb && !gb.dead && Math.hypot((w.x - gb.x) / (gb.rx + 6 + tol), (w.y - gb.y + 30) / (42 + tol)) < 1) return gb;
   for (const c of b.crates) if (!c.dead && Math.hypot((w.x - c.x) / (c.rx + tol), (w.y - c.y + 14) / (c.ry + 20 + tol)) < 1) return c;
-  for (const t of b.towers) if (t.side !== 0 && Math.abs(w.x - t.x) < 78 + tol && w.y > 280 - tol && w.y < 590) return t;
+  for (const t of b.towers) if (t.side !== 0 && Math.abs(w.x - t.x) < 78 + tol && w.y > 554 - tol && w.y < 890) return t;
   const cp = b.camps[1]; if (!cp.dead && Math.abs(w.x - cp.x) < 118 + tol && w.y > -20 && w.y < cp.y + 64 + tol) return cp;
   return null;
 }
@@ -201,7 +223,7 @@ function cataToggle() {
   const b = B.b, k = b.catas[0], want = k.want === 'centre' ? 'camp' : 'centre';
   if (b.over || !setCata(b, 0, want)) return;
   sfx.click(); B.cataGlow = 0;
-  if (want === 'centre') say(k.dead ? 'Une fois réparée, elle ira au centre' : 'Le singe pousse ta catapulte au centre', 2.2);
+  if (want === 'centre') say(k.dead ? 'Une fois réparée, elle ira au centre' : 'Barnabé pousse ta catapulte au centre', 2.2);
   else say(k.dead ? 'Une fois réparée, elle gardera ton camp' : 'Ta catapulte rentre garder ton camp', 2.2);
   B.tips = B.tips.filter((x) => !x[1].startsWith('Touche « Catapulte »'));      // il a compris : plus besoin de l'astuce
 }
@@ -276,13 +298,13 @@ function endAim(apply) {
 }
 function miniLook(p) {
   const [x, y, w, hh] = HUD.mini;
-  V.lookAt(clamp((p.x - x) / w, 0, 1) * 1536, clamp((p.y - y) / hh, 0, 1) * 1024, 0, true);
+  V.lookAt(clamp((p.x - x) / w, 0, 1) * MAP_W, clamp((p.y - y) / hh, 0, 1) * MAP_H, 0, true);
 }
 
 function bindPointer() {
   const scr = $('scrBattle');
   scr.addEventListener('pointerdown', (e) => {
-    if (!B || B.b.over || (e.target.closest && e.target.closest('button'))) return;
+    if (!B || B.b.over || B.frozen || (e.target.closest && e.target.closest('button'))) return;
     const p = toStage(e), b = B.b;
     try { scr.setPointerCapture(e.pointerId); } catch (er) { /* rien */ }
     U.pts.set(e.pointerId, p);
@@ -306,7 +328,7 @@ function bindPointer() {
       return;
     }
     if (p.y >= FH) return;
-    if (inRect(p, HUD.mini, 6)) { U.mini = true; miniLook(p); sfx.click(); return; }
+    if (V.miniShown() && inRect(p, HUD.mini, 6)) { U.mini = true; miniLook(p); sfx.click(); return; }
     // sur l'arène : toucher ou glisser ? On décide au premier déplacement ou au relâché.
     const w = V.worldAt(p.x, p.y), own = U.sel < 0 ? unitAt(w, 0, 22) : null;
     U.g = { id: e.pointerId, sx: p.x, sy: p.y, lx: p.x, ly: p.y, lt: performance.now(), vx: 0, vy: 0, own: own ? own.id : 0, kind: null };
@@ -359,10 +381,11 @@ function bindPointer() {
   scr.addEventListener('wheel', (e) => {
     if (!B || $('scrBattle').hidden) return;
     e.preventDefault();
+    if (B.frozen) return;
     const p = toStage(e); if (p.y < FH) V.zoomAt(p.x, p.y, Math.exp(-clamp(e.deltaY, -240, 240) * 0.0016));
   }, { passive: false });
   addEventListener('keydown', (e) => {
-    if (!B || B.b.over || $('scrBattle').hidden) return;
+    if (!B || B.b.over || B.frozen || $('scrBattle').hidden) return;
     const k = e.key;
     if (['1', '2', '3', '4'].includes(k)) { U.sel = +k - 1; say(swimCard() ? 'Touche l\'eau de ton camp pour le poser' : 'Touche ta zone bleue pour le poser', 2.2); }
     else if (k === 'Escape') { U.sel = -1; setMode(false); }
@@ -468,6 +491,11 @@ function onEvents(evs) {
         if (e.charge) { snd('hit_heavy2', e.x, e.y, 0.9); shake(e.x, e.y, 10); }
         break;
       case 'hit': {
+        if (e.kind === 'gold') {     // la boîte dorée encaisse : des éclats d'or
+          V.burst('star_big', e.x + rand(-14, 14), e.y - 34, 2, { s: 0.1, sp0: 80, sp1: 200, up: 150, g: 500, add: true });
+          if (!e.splash) { snd('hit', e.x, e.y, 0.5, { rate: rand(1.25, 1.45) }); if (every('goldHit', 0.5)) snd('coins', e.x, e.y, 0.3, { rate: rand(1.1, 1.3) }); }
+          break;
+        }
         if (e.kind === 'tower' || e.kind === 'crate' || e.kind === 'camp' || e.kind === 'cata') {
           const camp = e.kind === 'camp', cata = e.kind === 'cata', y = e.y - (e.kind === 'tower' ? 40 : camp ? 14 : cata ? 4 : 6) + rand(-10, 10), sx = e.x + rand(camp ? -40 : -18, camp ? 40 : 18);
           if (!e.splash && e.by) V.fx(SPARK[e.by] || 'burst_yellow', sx, y, { s0: 0.22, s1: 0.5, life: 0.25, rot: rand(-0.5, 0.5) });
@@ -503,7 +531,7 @@ function onEvents(evs) {
         break;
       case 'cata_move':
         snd('v_tuto', e.x, e.y, 0.35, { rate: 0.9 });       // (le bruit des roues : voir la boucle)
-        if (e.side === 1 && e.want === 'centre' && every('redGo', 20)) { V.ping(767, 470, '#ff5a4a'); if (!B.guide) say('La catapulte rouge part au centre !', 2.2); }
+        if (e.side === 1 && e.want === 'centre' && every('redGo', 20)) { V.ping(e.x, e.y, '#ff5a4a'); if (!B.guide) say('La catapulte rouge part au centre !', 2.2); }
         break;
       case 'cata_arrive':
         if (e.at === 'centre') {
@@ -537,7 +565,7 @@ function onEvents(evs) {
         shake(e.x, e.y, 12); V.mapfx.excite(0.8);
         V.text('CATAPULTE CASSÉE !', e.x, e.y - 100, { size: 30, tint: ours ? 'red' : 'yellow', life: 1.5, pop: 1.3 });
         V.trainerAct(e.side, 'angry', 1.8); V.trainerAct(1 - e.side, 'cheer', 1.4);
-        if (ours) { if (!B.guide) say('Ta catapulte est cassée : le singe la répare', 2.6); if (!seen(e.x, e.y)) V.ping(e.x, e.y, '#ff5a4a'); }
+        if (ours) { if (!B.guide) say('Ta catapulte est cassée : Barnabé la répare', 2.6); if (!seen(e.x, e.y)) V.ping(e.x, e.y, '#ff5a4a'); }
         else play('crown', { v: 0.5, at: 0.2 });
         break;
       }
@@ -547,7 +575,7 @@ function onEvents(evs) {
         if (e.side === 0 && !B.guide) say('Ta catapulte est réparée !', 1.8);
         break;
       case 'camp_down': {     // un camp est détruit : fin du combat
-        const mx = e.x, my = e.side === 0 ? 900 : 60;
+        const mx = e.x, my = e.side === 0 ? 1290 : 150;
         snd('tower_down', e.x, e.y, 1); snd('slam', e.x, e.y, 0.9, { at: 0.1 }); play('crown', { at: 0.4, v: 0.8 });
         V.fx('explosion2', mx, my, { s0: 0.5, s1: 1.6, life: 0.8 }); V.fx('explosion1', mx - 60, my + 10, { s0: 0.3, s1: 1, life: 0.6, delay: 0.1 }); V.fx('explosion1', mx + 60, my - 5, { s0: 0.3, s1: 1, life: 0.6, delay: 0.2 });
         V.burst('planks', mx, my, 12, { s: 0.22, sp0: 200, sp1: 520, up: 300, g: 1000 }); V.burst('rocks', mx, my, 10, { s: 0.18, sp0: 180, sp1: 480, up: 280, g: 1000 });
@@ -577,6 +605,13 @@ function onEvents(evs) {
           V.burst('rocks', e.x, e.y - 6, e.tower ? 6 : 4, { s: 0.12, sp0: 120, sp1: 260, up: 160, g: 900 }); V.decal('crater1', e.x, e.y + 3, 4, 0.32 * big); shake(e.x, e.y, e.tower ? 7 : 4);
           V.fx('dust_ring', e.x, e.y + 3, { s0: 0.2, s1: 0.7 * big, life: 0.4, flat: 0.55, a: 0.8 });
         } else if (e.key === 'hearts') V.fx('pink_burst', e.x, e.y - 14, { s0: 0.12, s1: 0.34, life: 0.25 });
+        else if (e.key === 'banana') {     // la banane dorée éclate en lumière sur l'animal qu'elle soigne
+          snd('gold_heal', e.x, e.y, 0.7, { rate: rand(0.95, 1.08) });
+          V.fx('pillar_gold', e.x, e.y - 30, { s0: 0.15, s1: 0.45, life: 0.6, a: 0.85 });
+          V.fx('ring_yellow', e.x, e.y + 2, { s0: 0.15, s1: 0.6, life: 0.45, flat: 0.55, add: true });
+          V.burst('star_big', e.x, e.y - 20, 6, { s: 0.12, sp0: 60, sp1: 180, up: 160, g: 300, add: true });
+          for (let i = 0; i < 10; i++) { const an = rand(0, 6.283), sp = rand(30, 80); V.dot(e.x + Math.cos(an) * 6, e.y - 18, { vx: Math.cos(an) * sp, vy: Math.sin(an) * sp * 0.5 - rand(50, 110), g: 200, life: rand(0.5, 0.8), r: rand(1, 1.8), col: '255,222,110', add: true }); }
+        }
         else if (WATER_LAND[e.key]) {     // bulles et boules d'eau des nageurs : ça éclabousse (et ça fait des ronds si c'est dans l'eau)
           const [n, v, k] = WATER_LAND[e.key];
           snd(n, e.x, e.y, v, { rate: rand(0.9, 1.15) }); droplets(e.x, e.y, k, e.key === 'wave' ? 1.3 : 0.9);
@@ -696,6 +731,44 @@ function onEvents(evs) {
         V.mapfx.excite(0.35);
         break;
       }
+      // ---- la boîte dorée et son singe (src/game/rt.js, GOLD) ----
+      case 'gold_drop': {      // elle tombe du ciel (la vue la fait tomber en une demi-seconde) du côté du camp mené
+        const ours = e.side === 0;
+        snd('gold_appear', e.x, e.y, 0.9); snd('chest_land', e.x, e.y, 0.7, { at: 0.5 });
+        V.fx('pillar_gold', e.x, e.y - 60, { s0: 0.4, s1: 1.3, life: 1.1, a: 0.9 });
+        V.fx('dust_ring', e.x, e.y + 4, { s0: 0.3, s1: 1.2, life: 0.5, flat: 0.5, a: 0.85, delay: 0.5 });
+        V.burst('star_big', e.x, e.y - 30, 12, { s: 0.18, sp0: 120, sp1: 340, up: 180, g: 400, add: true, delay: 0.5 });
+        V.banner('BOÎTE DORÉE !', { size: 100, tint: 'yellow', life: 1.8, y: 620 });
+        V.banner(ours ? 'Casse-la : un singe doré t\'aidera !' : 'Elle est tombée chez l\'adversaire', { size: 36, tint: 'white', life: 2.2, y: 712, delay: 0.3 });
+        V.ping(e.x, e.y, '#ffd23f'); V.mapfx.excite(1.2); shake(e.x, e.y, 8);
+        if (ours && !B.guide) say('Touche un animal, puis la boîte dorée', 3.4);
+        break;
+      }
+      case 'gold_break': {     // elle éclate : le singe doré en sort, pour le camp qui l'a cassée
+        const ours = e.side === 0;
+        snd('gold_break', e.x, e.y, 1); play('v_goldmonkey', { at: 0.35, v: 0.8 });
+        V.fx('explosion1', e.x, e.y - 30, { s0: 0.3, s1: 0.9, life: 0.5 });
+        V.fx('pillar_gold', e.x, e.y - 50, { s0: 0.3, s1: 1.2, life: 0.9 });
+        V.fx('ring_yellow', e.x, e.y + 4, { s0: 0.3, s1: 1.5, life: 0.6, flat: 0.5, add: true });
+        V.burst('star_big', e.x, e.y - 30, 16, { s: 0.22, sp0: 160, sp1: 460, up: 220, g: 500, add: true });
+        V.burst('planks', e.x, e.y - 20, 6, { s: 0.15, sp0: 120, sp1: 340, up: 240, g: 1000 });
+        for (let i = 0; i < 24; i++) { const an = rand(0, 6.283), sp = rand(60, 180); V.dot(e.x, e.y - 26, { vx: Math.cos(an) * sp, vy: Math.sin(an) * sp * 0.6 - rand(60, 140), g: 260, life: rand(0.6, 1.1), r: rand(1.1, 2), col: '255,215,90', add: true }); }
+        shake(e.x, e.y, 14); V.flash = 0.25; V.flashColor = '255,225,120'; V.mapfx.excite(1.4);
+        V.banner('SINGE DORÉ !', { size: 96, tint: ours ? 'yellow' : 'red', life: 1.7, y: 620, delay: 0.2 });
+        V.banner(ours ? 'Ses bananes soignent tes animaux' : 'Il soigne tes adversaires : vite !', { size: 36, tint: 'white', life: 2.2, y: 712, delay: 0.45 });
+        V.trainerAct(e.side, 'cheer', 2); V.ping(e.x, e.y, '#ffd23f');
+        break;
+      }
+      case 'gold_throw':
+        snd('swish', e.x, e.y, 0.45, { rate: 1.45 });
+        if (every('gmv', 3.2)) snd('v_goldmonkey', e.x, e.y, 0.5, { rate: rand(1.05, 1.2) });
+        break;
+      case 'gold_done': if (seen(e.x, e.y)) V.text('Plus de bananes !', e.x, e.y - 80, { size: 22, tint: 'yellow', life: 1.1 }); break;
+      case 'gold_bye':         // il repart comme il est venu : un éclat doré
+        snd('whoosh', e.x, e.y, 0.5, { rate: 1.4 });
+        V.fx('smoke_puff', e.x, e.y - 20, { s0: 0.2, s1: 0.6, life: 0.5, a: 0.8 });
+        V.burst('star_big', e.x, e.y - 24, 8, { s: 0.14, sp0: 80, sp1: 240, up: 160, g: 300, add: true });
+        break;
       case 'double': V.banner('AURA x2 !', { size: 120, tint: 'pink', life: 1.8, y: 680 }); play('surge'); V.mapfx.excite(1); break;
       case 'overtime':
         V.banner('MORT SUBITE !', { size: 104, tint: 'orange', life: 2.2, y: 650 }); V.banner('Le premier camp touché perd', { size: 42, tint: 'white', life: 2.2, y: 750, delay: 0.3 });
@@ -720,17 +793,19 @@ function loop(now) {
   raf = requestAnimationFrame(loop);
   const dt = Math.min(0.05, (now - lastT) / 1000); lastT = now;
   if (!B || document.hidden) return;
-  const b = B.b;
-  if (B.intro > 0) { B.intro -= dt; if (B.intro <= 0) V.lookAt(767, 655, ZOOM.start); }
-  B.acc += dt;
-  let n = 0;
-  while (B.acc >= TICK && n < 5) {
-    B.acc -= TICK; n++;
-    aiStep(b, B.ai, TICK);
-    step(b);
-    if (b.events.length) { onEvents(b.events); b.events.length = 0; }
+  const b = B.b, frozen = !!B.frozen && !b.over;          // figé : Barnabé explique (tutoriel)
+  if (B.intro > 0) { B.intro -= dt; if (B.intro <= 0) V.lookAt(MAP_W / 2, MAP_H, ZOOM.start); }
+  if (!frozen) {
+    B.acc += dt;
+    let n = 0;
+    while (B.acc >= TICK && n < 5) {
+      B.acc -= TICK; n++;
+      aiStep(b, B.ai, TICK);
+      step(b);
+      if (b.events.length) { onEvents(b.events); b.events.length = 0; }
+    }
+    if (n >= 5) B.acc = 0;
   }
-  if (n >= 5) B.acc = 0;
   // nos animaux tombés quittent le choix
   for (const id of U.picked) { const u = b.ents.get(id); if (!u || u.dead) U.picked.delete(id); }
   if (U.mode && !U.picked.size && !U.pickNew) U.pickNew = true;
@@ -751,8 +826,8 @@ function loop(now) {
   }
   if (!held) U.edgeT = 0;
   // le bruit de la rivière, plus fort quand la caméra est près de l'eau ; les roues des catapultes qui roulent
-  if (B.amb && every('amb', 0.25)) B.amb.set(b.over ? 0.12 : 0.22 + 0.3 * Math.max(0, 1 - Math.abs(V.cam.y - 500) / 420));
-  for (const k of b.catas) {
+  if (B.amb && every('amb', 0.25)) B.amb.set(b.over ? 0.12 : 0.3 + 0.08 * clamp((V.cam.z - ZOOM.min) / (ZOOM.max - ZOOM.min), 0, 1));
+  for (const k of frozen ? [] : b.catas) {
     if (k.moving && every('roll' + k.side, 2.4)) snd('cata_roll', k.x, k.y, 0.5);
     else if (k.dead) {           // le singe tape pour la réparer : un coup de marteau à chaque coup dessiné (drawMonkey, src/render/view.js)
       const ph = (V.time * 2.8 + k.side * 0.3) % 1, was = B.ham[k.side]; B.ham[k.side] = ph;
@@ -769,17 +844,17 @@ function loop(now) {
     if (sec === 30 && !b.overtime) { V.banner('30 SECONDES !', { size: 84, tint: 'orange', life: 1.4, y: 620 }); play('horn', { v: 0.5 }); }
   }
   if (U.hintT > 0) { U.hintT -= dt; if (U.hintT <= 0) U.hint = ''; }
-  if (U.zoneT > 0) U.zoneT -= dt;
+  if (U.zoneT > 0) { U.zoneT -= dt; if (U.zoneT <= 0) U.zoneSwim = false; }
   if (B.tips.length && !U.hint && b.t >= B.tips[0][0] && !b.over) say(B.tips.shift()[1], 3.2);
   const zone = !!(U.drag && U.drag.onField) || U.sel >= 0 || U.zoneT > 0;
-  V.draw(dt, b, { alpha: B.acc / TICK, drag: U.drag, sel: U.drag ? U.drag.slot : U.sel, opp: B.opp, hint: U.hint, zone, zoneSwim: zone && swimCard(), mode: U.mode, picked: U.picked, aim: U.aim, hover: U.hover, cataGlow: B.cataGlow > 0 });
+  V.draw(dt, b, { alpha: B.acc / TICK, drag: U.drag, sel: U.drag ? U.drag.slot : U.sel, opp: B.opp, hint: U.hint, zone, zoneSwim: zone && (U.drag || U.sel >= 0 ? swimCard() : U.zoneSwim), mode: U.mode, picked: U.picked, aim: U.aim, hover: U.hover, cataGlow: B.cataGlow > 0, frozen });
   if (b.over && !B.endShown) {
     if (!B.party) {
       B.party = true; U.sel = -1; U.drag = null; setMode(false); U.hint = '';
       const win = b.winner === 0, draw = b.winner === -1;
       music(null);
-      if (b.why === 'camp') V.lookAt(767, win ? 240 : 790, ZOOM.start);      // le camp qui vient de tomber
-      else V.lookAt(767, 512, ZOOM.min);         // toute l'arène
+      if (b.why === 'camp') V.lookAt(MAP_W / 2, win ? 300 : 1250, 1.3);      // le camp qui vient de tomber
+      else V.lookAt(MAP_W / 2, MAP_H, ZOOM.min);         // toute l'arène
       if (b.why === 'camp') V.banner(win ? 'CAMP DÉTRUIT !' : 'TON CAMP EST TOMBÉ', { size: 90, tint: win ? 'blue' : 'red', life: 1.2, y: 560 });
       if (win) { sfx.win(); for (let i = 0; i < 4; i++) V.burst('confetti', rand(150, 790), rand(250, 500), 10, { s: 0.5, sp0: 120, sp1: 420, up: 300, g: 420, life: 2.2, delay: i * 0.12, top: true }); V.burst('star_big', 470, 700, 14, { s: 0.4, sp0: 200, sp1: 520, up: 200, life: 1.6, top: true }); }
       else if (!draw) sfx.lose(); else play('overtime', { v: 0.6 });

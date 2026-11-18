@@ -1,13 +1,13 @@
-// Affichage du combat sur un canvas : la grande arène vue de près par une caméra que le joueur fait défiler, les
-// structures (camps, catapultes et leur tutomonkey, tours et leurs singes, boîtes), les dresseurs, les animaux animés
+// Affichage du combat sur un canvas : l'arène verticale, vue en entier (on peut zoomer et la faire glisser), les
+// structures (camps, catapultes et Barnabé qui les pousse, tours et leurs singes, boîtes), les dresseurs, les animaux animés
 // (les nageurs dans la rivière), projectiles, effets, et l'habillage (vie des camps, mini-carte, bouton de la catapulte,
 // barre du bas : Aura, cartes, Siffler, Attaquer). Ne décide de rien : il dessine l'état du moteur (src/game/rt.js) et
 // ce que battle.js lui passe.
 import { IMG, DATA } from '../core/assets.js';
 import { clamp, rand } from '../core/utils.js';
-import { handOf, nextOf, deployZones, DEPLOY_DELAY, TILE, WS, CATA } from '../game/rt.js';
+import { handOf, nextOf, deployZones, DEPLOY_DELAY, TILE, WS, CATA, goldAir } from '../game/rt.js';
 import { ANIMALS } from '../data/animals.js';
-import { MAP_W, MAP_H, MAP_K, PROPS, GW, GH } from '../data/map.js';
+import { MAP_W, MAP_H, MAP_K, PROPS, GW, GH, BRIDGES } from '../data/map.js';
 import { GRID, swimHome } from '../game/nav.js';
 import { MapFx } from './mapfx.js';
 
@@ -19,16 +19,17 @@ const hx = (x) => x * HK, hy = (y) => HUD_Y + y * HK;
 export const HUD = {
   whistle: [26, 1458, 151, 133], attack: [763, 1458, 152, 133],
   slots: [[196, 1442, 126, 147], [336, 1442, 125, 147], [478, 1442, 125, 147], [619, 1442, 125, 147]],
-  next: [14, 1338, 66, 90], gauge: [12, 86, 917, 64], mini: [14, 162, 216, 144], cata: [W - 142, 1290, 128, 116],
+  next: [14, 1338, 66, 90], gauge: [12, 86, 917, 64], mini: [14, 162, 120, 180], cata: [W - 142, 1290, 128, 116],
 };
-// Caméra : zoom en pixels de scène par pixel de carte. Au plus loin, la carte tient en hauteur entre les jauges et la barre du bas.
-export const ZOOM = { min: 1.29, max: 2.5, start: 1.72 };
-const VY = 768;                                // hauteur de l'écran où tombe le centre de la caméra
-const CAM_TOP = 104;                           // le haut de la carte peut descendre jusque-là (sous les jauges)
+// Caméra : zoom en pixels de scène par pixel de carte. Au plus loin, toute l'arène tient à l'écran (comme sur un téléphone
+// en hauteur) ; on peut zoomer pour voir de près, puis faire glisser.
+export const ZOOM = { min: 0.94, max: 1.9, start: 0.94 };
+export const VY = 713;                         // hauteur de l'écran où tombe le centre de la caméra
+const CAM_TOP = 0;                             // le haut de la carte peut descendre jusque-là
 const DIR8 = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'];
 const TINTS = { white: null, yellow: '#ffe14a', orange: '#ff9a2e', red: '#ff5a4a', green: '#8dff5a', blue: '#7fd4ff', grey: '#d9dde6', pink: '#ff8ad8' };
 const fonts = {};
-export const AIR_LIFT = 56;                    // hauteur de vol des animaux volants (pixels de leur planche)
+export const AIR_LIFT = 53;                    // hauteur de vol des animaux volants (pixels de leur planche)
 
 // ---------- police bitmap (titres) ----------
 function tintFont(name) {
@@ -124,18 +125,53 @@ function sprites() {
   return SPR;
 }
 const easeOut = (t) => 1 - (1 - t) * (1 - t);
-const DROP_T = 0.22, DROP_H = 170;            // un animal posé tombe du ciel en DROP_T secondes
+const DROP_T = 0.22, DROP_H = 260;            // un animal posé tombe du ciel en DROP_T secondes
 
 const ellipse = (c, x, y, rx, ry) => { c.beginPath(); c.ellipse(x, y, rx, ry, 0, 0, 6.3); };
 const TEAM = ['#39a9ff', '#ff5a4a'], TEAM_LITE = ['#bfe6ff', '#ffd0c4'];
 const AMBIENT = [null, '#fff0dc', '#e4f6dc', null, '#dbe9ff', '#ffd9cb'];      // teinte de l'air selon l'arène
 // le milieu de chaque tente (fumée, flammes), la hauteur de la barre de vie, et où se tient chaque dresseur (sur le sable,
 // à côté de sa tente, du côté opposé à sa catapulte)
-const TENT_MID = [{ x: 767, y: 905 }, { x: 767, y: 92 }], CAMP_BAR = [968, 58], TRAINER = [{ x: 902, y: 884 }, { x: 640, y: 160 }];
+const TENT_MID = [{ x: 512, y: 1300 }, { x: 512, y: 150 }], CAMP_BAR = [1396, 170], TRAINER = [{ x: 594, y: 1232 }, { x: 430, y: 302 }];
+// les tours : centre de la cage et de son anneau (le singe libéré s'y tient), bas de la tour (ordre d'affichage)
+const TOWER = { L: 81, R: 943, ring: 688, base: 884, bar: 552 };
 const dir4 = (dx, dy) => (Math.abs(dx) > Math.abs(dy) * 1.1 ? (dx > 0 ? 'E' : 'W') : (dy > 0 ? 'S' : 'N'));
 const CANFILTER = (() => { try { return typeof document !== 'undefined' && 'filter' in document.createElement('canvas').getContext('2d'); } catch (e) { return false; } })();
 const campPct = (cp) => Math.ceil(100 * Math.max(0, cp.hp) / cp.maxHp - 1e-6);       // vie d'un camp en %, arrondie vers le haut (1 % tant qu'il tient)
 const ROCK = [[0, 1], [0.8, 0.86], [1.5, 1.04], [2.3, 0.9], [3.1, 1], [3.9, 0.84], [4.7, 1.02], [5.5, 0.9]];      // contour du rocher (angle, rayon)
+// taille de dessin de la catapulte, de Barnabé qui la pousse et des dresseurs (pixels de leur planche → pixels de la carte)
+const CATA_S = 0.9, BARN_S = 0.8, TRAIN_S = 0.85;
+const DQ = 1.7;                                // gouttes et étincelles : taille et vitesse (écrites à l'échelle de l'ancienne carte)
+// Les tabliers des ponts : les nageurs passent dessous. Pour chacun : le contour et sa boîte.
+const DECKS = Object.values(BRIDGES).map((b) => {
+  const P = b.poly, xs = P.map((p) => p[0]), ys = P.map((p) => p[1]);
+  return { P, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+});
+const SINK_D = 46;                             // un nageur commence à plonger à cette distance d'un pont
+function inPoly(P, x, y) {
+  let inside = false;
+  for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside; }
+  return inside;
+}
+function deckDist(D, x, y) {
+  if (x < D.x0 - SINK_D || x > D.x1 + SINK_D || y < D.y0 - SINK_D || y > D.y1 + SINK_D) return 999;
+  if (inPoly(D.P, x, y)) return 0;
+  let m = 999;
+  for (let i = 0, j = D.P.length - 1; i < D.P.length; j = i++) {
+    const [ax, ay] = D.P[j], [bx, by] = D.P[i], dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy, t = l ? clamp(((x - ax) * dx + (y - ay) * dy) / l, 0, 1) : 0;
+    m = Math.min(m, Math.hypot(x - ax - t * dx, y - ay - t * dy));
+  }
+  return m;
+}
+// le bord avant d'un tablier (le plus bas à l'écran) à l'abscisse x : un nageur plus bas que ça nage devant le pont
+function deckFront(D, x) {
+  x = clamp(x, D.x0 + 0.5, D.x1 - 0.5); let f = D.y0;
+  for (let i = 0, j = D.P.length - 1; i < D.P.length; j = i++) { const [xi, yi] = D.P[i], [xj, yj] = D.P[j]; if ((xi > x) !== (xj > x)) f = Math.max(f, yi + (yj - yi) * (x - xi) / (xj - xi)); }
+  return f;
+}
+// à quel point un nageur en (x, y) a plongé : 0 en surface, 1 tout entier sous l'eau (sous un pont)
+export function sinkAt(x, y) { let d = 999; for (const D of DECKS) d = Math.min(d, deckDist(D, x, y)); const k = clamp(1 - d / SINK_D, 0, 1); return k * k * (3 - 2 * k); }
+const nearDeck = (x, y, m) => DECKS.some((D) => x > D.x0 - m && x < D.x1 + m && y > D.y0 - m && y < D.y1 + m);
 
 export class View {
   constructor(canvas) {
@@ -143,7 +179,7 @@ export class View {
     this.parts = []; this.texts = []; this.decals = []; this.dots = []; this.vis = new Map(); this.svis = new Map();
     this.shake = 0; this.time = 0; this.flash = 0; this.flashColor = '255,255,255'; this.banners = [];
     this.hand = [{}, {}, {}, {}]; this.auraN = -1; this.mapfx = new MapFx(); this.zoneCv = {};
-    this.cam = { x: 767, y: 512, z: ZOOM.min }; this.camT = null; this.cpulse = [0, 0]; this.chp = null; this.pings = []; this.ripples = [];
+    this.cam = { x: MAP_W / 2, y: MAP_H, z: ZOOM.min }; this.camT = null; this.cpulse = [0, 0]; this.chp = null; this.pings = []; this.ripples = [];
     this.tr = [{ anim: 'idle', t: 0, left: 0 }, { anim: 'idle', t: 0, left: 0 }];
   }
   // le dresseur d'un camp réagit : 'cheer' (ordre d'attaque, victoire), 'worry' (repli, coup dur), 'angry' (son camp est frappé)
@@ -158,7 +194,7 @@ export class View {
   reset(arena) {
     this.parts.length = 0; this.texts.length = 0; this.decals.length = 0; this.dots.length = 0; this.vis.clear(); this.svis.clear(); this.shake = 0; this.flash = 0; this.banners.length = 0;
     this.arena = arena; this.hand = [{}, {}, {}, {}]; this.auraN = -1; this.mapfx.reset(); this.cpulse = [0, 0]; this.chp = null;
-    this.cam = { x: 767, y: 512, z: ZOOM.min }; this.camT = null; this.pings = []; this.ripples = [];
+    this.cam = this.clampCam({ x: MAP_W / 2, y: MAP_H, z: ZOOM.min }); this.camT = null; this.pings = []; this.ripples = [];
     this.tr = [{ anim: 'idle', t: 0, left: 0 }, { anim: 'idle', t: 0, left: 0 }];
   }
   // signal sur la mini-carte (tour prise, boîte cassée, animal tombé hors de l'écran)
@@ -205,7 +241,7 @@ export class View {
     for (let i = 0; i < n; i++) { const an = rand(0, 6.283), sp = rand(o.sp0 || 80, o.sp1 || 260); this.fx(key, x, y, { vx: Math.cos(an) * sp, vy: Math.sin(an) * sp - (o.up || 0), g: o.g !== undefined ? o.g : 500, life: rand(0.35, 0.7) * (o.life || 1), s0: (o.s || 0.3) * rand(0.7, 1.2), s1: (o.s || 0.3) * rand(0.4, 0.8), rot: rand(0, 6), vr: rand(-6, 6), delay: o.delay || 0, add: o.add, top: o.top }); }
   }
   // petite goutte ou étincelle ronde (eau, liquide des jauges, fruits) : x, y, vitesses en pixels de la carte
-  dot(x, y, o = {}) { this.dots.push({ x, y, vx: o.vx || 0, vy: o.vy || 0, g: o.g || 0, age: -(o.delay || 0), life: o.life || 0.5, r: o.r || 2, col: o.col || '120,200,255', add: !!o.add, tx: o.tx, ty: o.ty }); if (this.dots.length > 420) this.dots.shift(); }
+  dot(x, y, o = {}) { this.dots.push({ x, y, vx: (o.vx || 0) * DQ, vy: (o.vy || 0) * DQ, g: (o.g || 0) * DQ, age: -(o.delay || 0), life: o.life || 0.5, r: (o.r || 2) * DQ, col: o.col || '120,200,255', add: !!o.add, tx: o.tx, ty: o.ty }); if (this.dots.length > 420) this.dots.shift(); }
   decal(key, x, y, life = 6, s = 1) { this.decals.push({ key, x, y, age: 0, life, s }); if (this.decals.length > 18) this.decals.shift(); }
   text(str, x, y, o = {}) { this.texts.push({ str: String(str), x, y, vy: (o.vy !== undefined ? o.vy : -90) * WS, vx: (o.vx || 0) * WS, age: 0, life: o.life || 0.8, size: o.size || 34, tint: o.tint || 'white', pop: o.pop !== undefined ? o.pop : 1 }); if (this.texts.length > 34) this.texts.shift(); }
   banner(str, o = {}) { this.banners.push({ str, age: -(o.delay || 0), life: o.life || 1.4, size: o.size || 120, tint: o.tint || 'yellow', y: o.y || 640, img: o.img || null, s: o.s || 0.8 }); }
@@ -246,14 +282,17 @@ export class View {
 
   // ---------- une image complète ----------
   // b : le combat (rt.js) ; ui : { alpha, drag, sel, opp, hint, zone, mode, picked, aim, hover }
+  // ui.frozen : le combat est figé (le tutoriel explique) ; tout s'arrête, sauf la caméra, les bandeaux et l'habillage
   draw(dt, b, ui) {
-    const c = this.ctx, k = this.k; this.time += dt;
-    this.stepCam(dt);
+    const c = this.ctx, k = this.k, rdt = dt;
+    if (ui.frozen) dt = 0;
+    this.time += dt; this.rtime = (this.rtime || 0) + rdt;
+    this.stepCam(rdt);
     const cam = this.cam, z = cam.z;
     c.setTransform(k, 0, 0, k, 0, 0);
     c.fillStyle = '#17102a'; c.fillRect(0, 0, W, H);
     let shx = 0, shy = 0;
-    if (this.shake > 0.3) { shx = rand(-1, 1) * this.shake; shy = rand(-1, 1) * this.shake; this.shake *= Math.pow(0.002, dt); } else this.shake = 0;
+    if (this.shake > 0.3) { shx = rand(-1, 1) * this.shake; shy = rand(-1, 1) * this.shake; this.shake *= Math.pow(0.002, rdt); } else this.shake = 0;
     c.setTransform(k * z, 0, 0, k * z, k * (W / 2 - cam.x * z + shx), k * (VY - cam.y * z + shy));
     const R = this.R = { x0: cam.x - W / 2 / z, x1: cam.x + W / 2 / z, y0: cam.y - VY / z, y1: cam.y + (H - VY) / z };
     this.drawMap(R);
@@ -268,15 +307,19 @@ export class View {
     const a = ui.alpha, list = [];
     for (const u of b.units) { const y = u.py + (u.y - u.py) * a; list.push({ y: y + (u.air ? 3000 : 0), u }); }
     for (const s of b.crates) list.push({ y: s.y + 16, s });
-    for (const t of b.towers) list.push({ y: 566, s: t });
+    for (const t of b.towers) list.push({ y: TOWER.base, s: t });
     for (const cp of b.catas) { const m = this.monkeyAt(cp, dt); list.push({ y: cp.y, cata: cp }, { y: m.y + 0.5, monkey: cp }); }
     list.push({ y: 2000, tent: 1 });
     for (const cp of b.camps) list.push({ y: cp.side === 0 ? 2001 : 130, camp: cp });      // l'éclat de la tente bleue passe par-dessus son image
     for (const s of [0, 1]) list.push({ y: TRAINER[s].y, trainer: s });
+    const G = b.gold;
+    if (G && G.box && !G.box.dead) list.push({ y: G.box.y + 4, gold: G.box });
+    if (G) for (const m of G.monkeys) if (!m.gone) list.push({ y: m.py + (m.y - m.py) * a + (goldAir(m) ? 60 : 0), gm: m });
     list.sort((p, q) => p.y - q.y);
     for (const it of list) {
       if (it.u) this.drawUnit(it.u, dt, a, b, ui); else if (it.tent) this.prop('tentB'); else if (it.camp) this.drawCamp(it.camp, dt, b);
       else if (it.cata) this.drawCata(it.cata, dt, b, ui); else if (it.monkey) this.drawMonkey(it.monkey, b); else if (it.trainer !== undefined) this.drawTrainer(it.trainer, dt, b);
+      else if (it.gold) this.drawGoldBox(it.gold, dt, ui); else if (it.gm) this.drawGoldMonkey(it.gm, dt, a);
       else this.drawStruct(it.s, dt, b, ui);
     }
     for (const s of b.structs) this.drawStructBar(s, b, ui);
@@ -299,12 +342,12 @@ export class View {
     // ---------- habillage, en pixels de scène ----------
     c.setTransform(k, 0, 0, k, 0, 0);
     { const g = c.createLinearGradient(0, 0, 0, 240); g.addColorStop(0, 'rgba(10,6,26,.55)'); g.addColorStop(1, 'rgba(10,6,26,0)'); c.fillStyle = g; c.fillRect(0, 0, W, 240); }
-    if (this.flash > 0.01) { c.fillStyle = `rgba(${this.flashColor},${this.flash})`; c.fillRect(0, 0, W, HUD_Y); this.flash *= Math.pow(0.002, dt); }
+    if (this.flash > 0.01) { c.fillStyle = `rgba(${this.flashColor},${this.flash})`; c.fillRect(0, 0, W, HUD_Y); this.flash *= Math.pow(0.002, rdt); }
     this.drawTop(b, ui, dt);
     this.drawMini(b, ui);
     this.drawHud(b, ui);
-    this.stepParts(dt, true);
-    this.drawBanners(dt);
+    this.stepParts(rdt, true);
+    this.drawBanners(rdt);
     if (ui.drag && !ui.drag.onField && ui.drag.moved) this.drawDragCard(ui.drag);
   }
 
@@ -342,9 +385,9 @@ export class View {
       g.putImageData(id, 0, 0); ge.putImageData(ie, 0, 0);
       z = this.zoneCv[key] = { fill, edge };
     }
-    const c = this.ctx; c.imageSmoothingEnabled = true;
-    c.globalAlpha = 0.85 + 0.15 * Math.sin(this.time * 5); c.drawImage(z.fill, 0, 0, MAP_W, MAP_H);
-    c.globalCompositeOperation = 'lighter'; c.globalAlpha = 0.55 + 0.3 * Math.sin(this.time * 5); c.drawImage(z.edge, 0, 0, MAP_W, MAP_H);
+    const c = this.ctx, t = this.rtime; c.imageSmoothingEnabled = true;          // elle palpite même quand le combat est figé (tutoriel)
+    c.globalAlpha = 0.85 + 0.15 * Math.sin(t * 5); c.drawImage(z.fill, 0, 0, MAP_W, MAP_H);
+    c.globalCompositeOperation = 'lighter'; c.globalAlpha = 0.55 + 0.3 * Math.sin(t * 5); c.drawImage(z.edge, 0, 0, MAP_W, MAP_H);
     c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1;
   }
   drawCloud(cl) {
@@ -361,9 +404,22 @@ export class View {
     const c = this.ctx;
     for (let i = this.ripples.length - 1; i >= 0; i--) {
       const r = this.ripples[i]; r.age += dt; if (r.age >= r.life) { this.ripples.splice(i, 1); continue; }
-      const q = r.age / r.life, rad = r.r * (0.45 + 1.1 * q);
-      c.lineWidth = 1.6 * (1 - q) + 0.4; c.strokeStyle = `rgba(235,250,255,${r.a * (1 - q)})`; ellipse(c, r.x, r.y, rad, rad * 0.42); c.stroke();
+      const q = r.age / r.life, rad = r.r * (0.45 + 1.1 * q), under = nearDeck(r.x, r.y, rad + 4);
+      if (under) { c.save(); this.clipDecks(); }
+      c.lineWidth = 2.6 * (1 - q) + 0.6; c.strokeStyle = `rgba(235,250,255,${r.a * (1 - q)})`; ellipse(c, r.x, r.y, rad, rad * 0.42); c.stroke();
+      if (under) c.restore();
     }
+  }
+  // Ce qui est sous un pont ne se voit pas : on ne dessine plus sur les tabliers (x, y : un nageur, qu'on voit
+  // par-dessus un pont quand il nage devant lui, plus bas à l'écran). Sans point : tous les tabliers proches.
+  clipDecks(x, y) {
+    const c = this.ctx, R = this.R; let any = false;
+    for (const D of DECKS) {
+      if (x !== undefined && (x < D.x0 - 70 || x > D.x1 + 70 || y < D.y0 - 12 || y > deckFront(D, x) + 3)) continue;
+      if (!any) { any = true; c.beginPath(); c.rect(R.x0 - 60, R.y0 - 60, R.x1 - R.x0 + 120, R.y1 - R.y0 + 120); }
+      D.P.forEach(([px, py], i) => (i ? c.lineTo(px, py) : c.moveTo(px, py))); c.closePath();
+    }
+    if (any) c.clip('evenodd');
   }
 
   // ---------- ordres : anneaux au sol, lignes vers les cibles ----------
@@ -384,10 +440,10 @@ export class View {
       // tout ce qu'on peut viser s'allume : la cible, les tours qui ne sont pas à nous, les boîtes, les animaux adverses
       for (const s of b.structs) {
         if (s.dead || s.side === 0) continue;
-        this.ring(s.x, s.y + (s.kind === 'crate' ? 6 : s.kind === 'tower' ? 96 : s.kind === 'camp' ? 30 : 2), s.rx * (s.kind === 'tower' ? 0.9 : s.kind === 'cata' ? 1.25 : 1.05) + 3 * pulse, (s.kind === 'tower' ? 26 : s.ry * 0.9) + 2 * pulse, `rgba(255,214,60,${0.65 + 0.3 * pulse})`, 3.2, [9, 6], t * 1.2);
+        this.ring(s.x, s.kind === 'tower' ? TOWER.base - 14 : s.y + (s.kind === 'crate' ? 6 : s.kind === 'camp' ? 30 : 2), s.rx * (s.kind === 'tower' ? 0.95 : s.kind === 'cata' ? 1.25 : 1.05) + 3 * pulse, (s.kind === 'tower' ? 26 : s.ry * 0.9) + 2 * pulse, `rgba(255,214,60,${0.65 + 0.3 * pulse})`, 3.2, [9, 6], t * 1.2);
       }
       for (const u of b.units) {
-        if (u.dead || u.spawn > 0) continue;
+        if (u.dead || u.spawn > 0 || (this.vis.get(u.id) || {}).sunk) continue;
         if (u.side === 1) this.ring(u.x, u.y + 2, u.r * 1.55 + 2 * pulse, (u.r * 1.55 + 2 * pulse) * 0.5, `rgba(255,70,50,${0.7 + 0.3 * pulse})`, 2.6, [7, 5], -t * 2);
         else if (!picked.has(u.id)) this.ring(u.x, u.y + 2, u.r * 1.5, u.r * 0.75, `rgba(140,215,255,${0.45 + 0.3 * pulse})`, 2.2);
       }
@@ -403,14 +459,14 @@ export class View {
       c.lineWidth = on ? 2.8 : 2; c.strokeStyle = `rgba(${col},${al})`; c.beginPath(); c.moveTo(u.x, u.y); c.lineTo(g.x, g.y); c.stroke(); c.restore();
       if (g.kind !== 'atk') this.ring(g.x, g.y, 9 + 2 * pulse, 4.5 + pulse, `rgba(${col},.9)`, 2.2);
       else if (on) {      // la cible visée : un anneau rouge qui tourne
-        const e = g.e, rx = e.kind === 'unit' ? e.r * 1.7 : e.kind === 'tower' ? 64 : e.kind === 'cata' ? 40 : e.rx * 1.05, ry = e.kind === 'unit' ? e.r * 0.85 : e.kind === 'tower' ? 20 : e.kind === 'cata' ? 16 : e.ry * 0.9;
-        const gx = e.x, gy = e.kind === 'unit' ? e.y + 2 : e.kind === 'tower' ? 556 : e.kind === 'cata' ? e.y + 2 : e.y + 6;
+        const e = g.e, rx = e.kind === 'unit' ? e.r * 1.7 : e.kind === 'tower' ? 74 : e.kind === 'cata' ? 66 : e.rx * 1.05, ry = e.kind === 'unit' ? e.r * 0.85 : e.kind === 'tower' ? 22 : e.kind === 'cata' ? 26 : e.ry * 0.9;
+        const gx = e.x, gy = e.kind === 'unit' ? e.y + 2 : e.kind === 'tower' ? TOWER.base - 14 : e.kind === 'cata' ? e.y + 2 : e.y + 6;
         this.ring(gx, gy, rx + 2 * pulse, ry + pulse, 'rgba(26,16,8,.6)', 5, [10, 7], t * 1.5);
         this.ring(gx, gy, rx + 2 * pulse, ry + pulse, `rgba(255,80,60,${0.75 + 0.25 * pulse})`, 2.8, [10, 7], t * 1.5);
       }
     }
     for (const u of b.units) {
-      if (u.dead || !picked.has(u.id)) continue;
+      if (u.dead || !picked.has(u.id) || (this.vis.get(u.id) || {}).sunk) continue;
       const r = u.r * 1.7 + 2.5 * pulse;
       c.fillStyle = 'rgba(255,240,150,.22)'; ellipse(c, u.x, u.y + 2, r, r * 0.5); c.fill();
       this.ring(u.x, u.y + 2, r, r * 0.5, '#1a1008', 5); this.ring(u.x, u.y + 2, r, r * 0.5, '#fff27a', 2.8);
@@ -421,15 +477,15 @@ export class View {
     const c = this.ctx, t = this.time, bob = Math.sin(t * 6) * 2.5;
     for (const u of b.units) {
       if (u.dead || !ui.picked.has(u.id)) continue;
-      const v = this.vis.get(u.id); if (!v || v.top === undefined) continue;
+      const v = this.vis.get(u.id); if (!v || v.top === undefined || v.sunk) continue;
       const y = v.top - 9 + bob;
       c.fillStyle = '#1a1008'; c.beginPath(); c.moveTo(u.x - 7, y - 8); c.lineTo(u.x + 7, y - 8); c.lineTo(u.x, y + 2); c.closePath(); c.fill();
       c.fillStyle = '#fff27a'; c.beginPath(); c.moveTo(u.x - 4.6, y - 6.6); c.lineTo(u.x + 4.6, y - 6.6); c.lineTo(u.x, y - 0.4); c.closePath(); c.fill();
     }
     const h = ui.hover ? b.ents.get(ui.hover) : null;
     if (h && !h.dead) {
-      const img = IMG.ic_target, top = h.kind === 'unit' ? ((this.vis.get(h.id) || {}).top || h.y - 40) - 12 : h.kind === 'tower' ? 300 : h.kind === 'cata' ? h.y - 78 : h.y - 52;
-      const s = 22 + 3 * Math.sin(t * 9);
+      const img = IMG.ic_target, top = h.kind === 'unit' ? ((this.vis.get(h.id) || {}).top || h.y - 70) - 12 : h.kind === 'tower' ? TOWER.bar - 30 : h.kind === 'cata' ? h.y - 128 : h.y - 60;
+      const s = 30 + 4 * Math.sin(t * 9);
       if (img && img.width) c.drawImage(img, h.x - s / 2, top - s / 2 + bob, s, s);
     }
   }
@@ -461,17 +517,17 @@ export class View {
       if (v.dead !== s.dead) { v.dead = s.dead; v.age = 0; }
       if (s.dead) return;
       const name = 'crate' + s.n, k = Math.min(1, v.age / 0.28), sc = v.age < 0.28 ? 0.5 + 0.62 * k - 0.12 * Math.sin(k * Math.PI) : 1 + 0.03 * v.flash;
-      c.fillStyle = 'rgba(14,8,24,.28)'; ellipse(c, s.x + 3, s.y + 20, 46, 12); c.fill();
+      c.fillStyle = 'rgba(14,8,24,.3)'; ellipse(c, s.x + 2, s.y + 14, 31, 8); c.fill();
       this.prop(name, jx, 0, 1, sc);
       if (v.flash > 0.02 || glow) this.prop(name, jx, 0, Math.min(1, v.flash * 0.5 + glow), sc, true);
       return;
     }
     // tour latérale : le corps, puis la cage (tant qu'elle n'est à personne) ou le singe libéré derrière sa rambarde
-    const L = s.lane, cx = L === 'L' ? 164 : 1372, m = L === 'L' ? 1 : -1;
+    const L = s.lane, cx = TOWER[L], m = L === 'L' ? 1 : -1;
     this.prop('tower' + L);
     if (s.side >= 0) {      // la bannière blanche prend la couleur du camp
       c.save(); c.globalCompositeOperation = 'multiply'; c.fillStyle = s.side === 0 ? '#63b4ff' : '#ff7868';
-      c.beginPath(); c.moveTo(cx - 28 * m, 440); c.lineTo(cx + 25 * m, 440); c.lineTo(cx + 25 * m, 510); c.lineTo(cx - 2 * m, 532); c.lineTo(cx - 28 * m, 510); c.closePath(); c.fill(); c.restore();
+      c.beginPath(); c.moveTo(cx - 30 * m, 732); c.lineTo(cx + 30 * m, 732); c.lineTo(cx + 30 * m, 812); c.lineTo(cx, 838); c.lineTo(cx - 30 * m, 812); c.closePath(); c.fill(); c.restore();
     }
     if (v.side !== s.side) { v.side = s.side; v.pop = 0; }
     v.pop = Math.min(1, v.pop + dt * 2.2);
@@ -485,8 +541,8 @@ export class View {
       else if (v.throwT > 2.5) v.dir = 'S';
       const hop = v.pop < 1 ? Math.sin(v.pop * Math.PI) * 16 : Math.abs(Math.sin(this.time * 2.4 + cx)) * 1.2;
       const thr = v.throwT < 0.55, fr = thr ? Math.min(7, 4 + Math.floor(v.throwT / 0.55 * 4)) : 0;
-      c.fillStyle = TEAM[s.side]; c.globalAlpha = 0.55; ellipse(c, cx, 397, 40, 9); c.fill(); c.globalAlpha = 1;
-      drawUnitFrame(c, key, 'throw_' + v.dir, fr, cx, 402 - hop, WS * 1.12, 1, 1, thr ? 1 : 1 + 0.012 * Math.sin(this.time * 2.6 + cx));
+      c.fillStyle = TEAM[s.side]; c.globalAlpha = 0.55; ellipse(c, cx, TOWER.ring + 1, 46, 11); c.fill(); c.globalAlpha = 1;
+      drawUnitFrame(c, key, 'throw_' + v.dir, fr, cx, TOWER.ring + 6 - hop, 0.78, 1, 1, thr ? 1 : 1 + 0.012 * Math.sin(this.time * 2.6 + cx));
       this.prop('rail' + L);
       if (glow) this.prop('tower' + L, 0, 0, glow, 1, true);
     }
@@ -514,18 +570,18 @@ export class View {
     if (!v) { v = { hp: cp.hp, flash: 0, roll: 0, px: cp.x, py: cp.y, mx: 0, my: 0, mdir: 'S', mwalk: 0, mset: false, smoke: 0, spark: 0, dead: cp.dead, fixT: 9 }; this.svis.set(cp.id, v); }
     return v;
   }
-  // Le tutomonkey : derrière la catapulte quand il la pousse, à côté d'elle sinon (il y va à pied). Renvoie sa position.
+  // Barnabé (sprite « tutomonkey ») : derrière la catapulte quand il la pousse, à côté d'elle sinon (il y va à pied). Renvoie sa position.
   monkeyAt(cp, dt) {
     const v = this.cataVis(cp), s = cp.side === 0 ? 1 : -1;
     let tx, ty;
-    if (cp.moving) { tx = cp.x - cp.fx * 27; ty = cp.y - cp.fy * 15 + 3; }
-    else if (cp.dead) { tx = cp.x + 31 * s; ty = cp.y + 5; }
-    else { tx = cp.x + 36 * s; ty = cp.y + 8; }
+    if (cp.moving) { tx = cp.x - cp.fx * 44; ty = cp.y - cp.fy * 24 + 5; }
+    else if (cp.dead) { tx = cp.x + 50 * s; ty = cp.y + 8; }
+    else { tx = cp.x + 58 * s; ty = cp.y + 13; }
     if (!v.mset) { v.mset = true; v.mx = tx; v.my = ty; }
     const dx = tx - v.mx, dy = ty - v.my, l = Math.hypot(dx, dy);
     v.mgo = false;
     if (cp.moving || l < 1.5) { v.mx += dx * Math.min(1, dt * 12); v.my += dy * Math.min(1, dt * 12); }
-    else { const st = Math.min(l, 46 * dt); v.mx += dx / l * st; v.my += dy / l * st; v.mgo = true; v.mdir = dir4(dx, dy); v.mwalk += dt * 9; }
+    else { const st = Math.min(l, 75 * dt); v.mx += dx / l * st; v.my += dy / l * st; v.mgo = true; v.mdir = dir4(dx, dy); v.mwalk += dt * 9; }
     return { x: v.mx, y: v.my };
   }
   drawCata(cp, dt, b, ui) {
@@ -534,8 +590,8 @@ export class View {
     v.hp = cp.hp; v.flash = Math.max(0, v.flash - dt * 6);
     if (v.dead !== cp.dead) { v.dead = cp.dead; if (!cp.dead) v.fixT = 0; }
     v.fixT += dt;
-    if (!this.onScreen(cp.x, cp.y, 120)) { v.px = cp.x; v.py = cp.y; return; }
-    const moved = Math.hypot(cp.x - v.px, cp.y - v.py); v.px = cp.x; v.py = cp.y; v.roll += moved / 5;
+    if (!this.onScreen(cp.x, cp.y, 160)) { v.px = cp.x; v.py = cp.y; return; }
+    const moved = Math.hypot(cp.x - v.px, cp.y - v.py); v.px = cp.x; v.py = cp.y; v.roll += moved / 8;
     const dir = dir4(cp.fx, cp.fy);
     let anim = 'fire_' + dir, fr = 0, rot = 0, sx = 1, sy = 1, oy = 0;
     if (cp.moving) { anim = 'move_' + dir; fr = Math.floor(v.roll) % 8; oy = -Math.abs(Math.sin(v.roll * 1.6)) * 1.2; }
@@ -543,58 +599,58 @@ export class View {
     else if (cp.dead) { fr = 5; rot = cp.side === 0 ? -0.11 : 0.11; sy = 0.94; }
     if (v.fixT < 0.4) { const k = v.fixT / 0.4; sy *= 1 + 0.12 * Math.sin(k * Math.PI); sx *= 1 - 0.05 * Math.sin(k * Math.PI); }
     // au sol : ombre et anneau du camp
-    const rw = 44;
-    c.globalAlpha = 0.8; c.drawImage(cp.side === 0 ? S.ring0 : S.ring1, cp.x - rw, cp.y + 2 - rw * 0.5, rw * 2, rw); c.globalAlpha = 1;
-    c.globalAlpha = 0.85; c.drawImage(S.shadow, cp.x - 38, cp.y - 9, 76, 26); c.globalAlpha = 1;
+    const rw = 72;
+    c.globalAlpha = 0.8; c.drawImage(cp.side === 0 ? S.ring0 : S.ring1, cp.x - rw, cp.y + 3 - rw * 0.5, rw * 2, rw); c.globalAlpha = 1;
+    c.globalAlpha = 0.85; c.drawImage(S.shadow, cp.x - 62, cp.y - 14, 124, 42); c.globalAlpha = 1;
     const glow = (ui.mode && cp.side !== 0 && !cp.dead ? 0.16 + 0.12 * Math.sin(this.time * 7) : 0) + v.flash * 0.7 + (v.fixT < 0.5 ? 0.6 * (1 - v.fixT / 0.5) : 0);
     if (cp.dead && CANFILTER) c.filter = 'brightness(0.55) saturate(0.55)';
-    drawUnitFrame(c, key, anim, fr, cp.x, cp.y + oy, WS, 1, sx, sy, rot);
+    drawUnitFrame(c, key, anim, fr, cp.x, cp.y + oy, CATA_S, 1, sx, sy, rot);
     if (cp.dead && CANFILTER) c.filter = 'none';
-    if (glow > 0.02) { c.globalCompositeOperation = 'lighter'; drawUnitFrame(c, key, anim, fr, cp.x, cp.y + oy, WS, Math.min(1, glow), sx, sy, rot); c.globalCompositeOperation = 'source-over'; }
+    if (glow > 0.02) { c.globalCompositeOperation = 'lighter'; drawUnitFrame(c, key, anim, fr, cp.x, cp.y + oy, CATA_S, Math.min(1, glow), sx, sy, rot); c.globalCompositeOperation = 'source-over'; }
     // en route : un peu de poussière derrière les roues
-    if (cp.moving && Math.random() < 0.25) this.fx('smoke_puff', cp.x - cp.fx * 22 + rand(-8, 8), cp.y + 2, { s0: 0.06, s1: 0.16, life: 0.45, a: 0.45, vy: -14, fade: 0.7 });
+    if (cp.moving && Math.random() < 0.25) this.fx('smoke_puff', cp.x - cp.fx * 36 + rand(-13, 13), cp.y + 3, { s0: 0.06, s1: 0.16, life: 0.45, a: 0.45, vy: -14, fade: 0.7 });
     // cassée : fumée, et des étincelles là où le singe tape
     if (cp.dead) {
-      v.smoke -= dt; if (v.smoke <= 0) { v.smoke = 0.22; this.fx(Math.random() < 0.5 ? 'smoke1' : 'smoke2', cp.x + rand(-18, 18), cp.y - 30, { s0: 0.08, s1: 0.3, life: 1.2, vy: -38, vx: rand(-8, 8), a: 0.6, fade: 0.7 }); }
+      v.smoke -= dt; if (v.smoke <= 0) { v.smoke = 0.22; this.fx(Math.random() < 0.5 ? 'smoke1' : 'smoke2', cp.x + rand(-29, 29), cp.y - 50, { s0: 0.08, s1: 0.3, life: 1.2, vy: -38, vx: rand(-8, 8), a: 0.6, fade: 0.7 }); }
     }
   }
-  // Le tutomonkey : il pousse, rejoint sa place, attend, ou répare à grands coups
+  // Barnabé : il pousse, rejoint sa place, attend, ou répare à grands coups
   drawMonkey(cp, b) {
-    const c = this.ctx, v = this.cataVis(cp), x = v.mx, y = v.my; if (!this.onScreen(x, y, 80)) return;
+    const c = this.ctx, v = this.cataVis(cp), x = v.mx, y = v.my; if (!this.onScreen(x, y, 110)) return;
     const s = cp.side === 0 ? 1 : -1;
     let anim = 'walk_S', fr = 0, oy = 0, sy = 1, sx = 1;
     if (cp.moving) { anim = 'push_' + dir4(cp.fx, cp.fy); fr = Math.floor(v.roll * 0.9) % 8; oy = -Math.abs(Math.sin(v.roll * 0.9 * Math.PI / 2)) * 1.5; }
     else if (v.mgo) { anim = 'walk_' + v.mdir; fr = Math.floor(v.mwalk) % 8; }
     else if (cp.dead) {          // il tape sur la catapulte : élan, coup, rebond
       const ph = (this.time * 2.8 + cp.side * 0.3) % 1; anim = 'push_' + (s > 0 ? 'W' : 'E'); fr = ph < 0.55 ? 2 : 5;
-      oy = -Math.sin(Math.min(1, ph / 0.55) * Math.PI) * 5; sy = ph > 0.55 && ph < 0.7 ? 0.92 : 1;
-      if (ph > 0.55 && v.spark < 0.55) { this.burst('star_big', x - 16 * s, y - 20, 3, { s: 0.09, sp0: 40, sp1: 120, life: 0.5, g: 300 }); this.dot(x - 15 * s, y - 20, { vx: rand(-40, 40), vy: -60, g: 220, r: 1.6, col: '255,220,120', life: 0.4, add: true }); }
+      oy = -Math.sin(Math.min(1, ph / 0.55) * Math.PI) * 8; sy = ph > 0.55 && ph < 0.7 ? 0.92 : 1;
+      if (ph > 0.55 && v.spark < 0.55) { this.burst('star_big', x - 26 * s, y - 32, 3, { s: 0.09, sp0: 40, sp1: 120, life: 0.5, g: 300 }); this.dot(x - 24 * s, y - 32, { vx: rand(-40, 40), vy: -60, g: 220, r: 2.4, col: '255,220,120', life: 0.4, add: true }); }
       v.spark = ph;
-    } else if (b.over) { const hop = Math.abs(Math.sin(this.time * 7 + cp.side)); oy = -hop * 10; anim = 'walk_S'; }
+    } else if (b.over) { const hop = Math.abs(Math.sin(this.time * 7 + cp.side)); oy = -hop * 16; anim = 'walk_S'; }
     else { const br = Math.sin(this.time * 2.4 + cp.side); sy = 1 + br * 0.02; anim = cp.fire ? 'walk_' + dir4(cp.fx, cp.fy) : 'walk_S'; }
-    c.globalAlpha = 0.8; c.drawImage(sprites().shadow, x - 15, y - 5, 30, 12); c.globalAlpha = 1;
-    drawUnitFrame(c, 'tutomonkey', anim, fr, x, y + oy, WS * 0.86, 1, sx, sy);
+    c.globalAlpha = 0.8; c.drawImage(sprites().shadow, x - 24, y - 8, 48, 19); c.globalAlpha = 1;
+    drawUnitFrame(c, 'tutomonkey', anim, fr, x, y + oy, BARN_S, 1, sx, sy);
   }
   // Le dresseur de chaque camp, en petit à côté de sa tente : il encourage, s'inquiète ou se fâche selon le combat
   drawTrainer(s, dt, b) {
-    const P = TRAINER[s], T = this.tr[s], key = 'trainer' + s; if (!this.onScreen(P.x, P.y, 80)) { T.t += dt; return; }
+    const P = TRAINER[s], T = this.tr[s], key = 'trainer' + s; if (!this.onScreen(P.x, P.y, 110)) { T.t += dt; return; }
     T.t += dt; T.left -= dt;
     if (b.over) { T.anim = b.winner === s ? 'cheer' : b.winner < 0 ? 'worry' : 'angry'; T.left = 1; }
     else if (T.left <= 0 && T.anim !== 'idle') { T.anim = 'idle'; T.t = 0; }
     // au repos il trépigne en boucle ; une réaction se joue une fois, puis son moment le plus expressif tourne en boucle
     const c = this.ctx, n = animLen(key, T.anim), f = Math.floor(T.t * 9), fr = T.anim === 'idle' ? Math.floor(T.t * 5) % n : f < n ? f : 2 + (f - n) % 3;
-    c.globalAlpha = 0.85; c.drawImage(sprites().shadow, P.x - 14, P.y - 5, 28, 11); c.globalAlpha = 1;
-    c.fillStyle = TEAM[s]; c.globalAlpha = 0.5; ellipse(c, P.x, P.y + 1, 15, 5); c.fill(); c.globalAlpha = 1;
-    drawUnitFrame(c, key, T.anim, fr, P.x, P.y, WS * 0.8);
+    c.globalAlpha = 0.85; c.drawImage(sprites().shadow, P.x - 24, P.y - 8, 48, 18); c.globalAlpha = 1;
+    c.fillStyle = TEAM[s]; c.globalAlpha = 0.5; ellipse(c, P.x, P.y + 1, 25, 8); c.fill(); c.globalAlpha = 1;
+    drawUnitFrame(c, key, T.anim, fr, P.x, P.y, TRAIN_S);
   }
   drawCampBar(s) {
     const y = CAMP_BAR[s.side]; if (!this.onScreen(s.x, y, 140)) return;
-    const c = this.ctx, w = 128, hh = 11, x = s.x - w / 2, r = Math.max(0, s.hp) / s.maxHp, col = s.side === 0 ? ['#8fe0ff', '#1f8fe6'] : ['#ff9a84', '#d92a20'];
+    const c = this.ctx, w = 160, hh = 13, x = s.x - w / 2, r = Math.max(0, s.hp) / s.maxHp, col = s.side === 0 ? ['#8fe0ff', '#1f8fe6'] : ['#ff9a84', '#d92a20'];
     c.fillStyle = 'rgba(16,10,8,.92)'; rr(c, x - 2, y - 2, w + 4, hh + 4, 4.5); c.fill();
     c.fillStyle = '#3b2e2c'; rr(c, x, y, w, hh, 3); c.fill();
     const g = c.createLinearGradient(0, y, 0, y + hh); g.addColorStop(0, col[0]); g.addColorStop(1, col[1]);
     c.fillStyle = g; rr(c, x, y, Math.max(3, w * r), hh, 3); c.fill();
-    label(c, (s.side === 0 ? 'Ton camp · ' : 'Camp adverse · ') + campPct(s) + ' %', s.x, y - 11, 13, TEAM_LITE[s.side], 'center', 0.3);
+    label(c, (s.side === 0 ? 'Ton camp · ' : 'Camp adverse · ') + campPct(s) + ' %', s.x, y - 13, 16, TEAM_LITE[s.side], 'center', 0.3);
   }
   drawStructBar(s, b, ui) {
     if (s.kind === 'cata') { this.drawCataBar(s, ui); return; }
@@ -602,26 +658,37 @@ export class View {
     if (s.kind === 'camp') { this.drawCampBar(s); return; }
     const r = s.hp / s.maxHp;
     if (s.kind === 'crate' && r >= 1) return;
+    if (s.kind === 'gold') {          // la boîte dorée : toujours sa barre, et son nom
+      if (!this.onScreen(s.x, s.y, 120)) return;
+      const c = this.ctx, w = 78, hh = 9, x = s.x - w / 2, y = s.y - 82, v = this.svis.get(s.id);
+      if (v && v.age < 0.7) return;     // (pas pendant qu'elle tombe)
+      c.fillStyle = 'rgba(16,10,8,.92)'; rr(c, x - 1.6, y - 1.6, w + 3.2, hh + 3.2, 3.4); c.fill();
+      c.fillStyle = '#3b2e2c'; rr(c, x, y, w, hh, 2.4); c.fill();
+      const g = c.createLinearGradient(0, y, 0, y + hh); g.addColorStop(0, '#fff6b8'); g.addColorStop(1, '#e0a010');
+      c.fillStyle = g; rr(c, x, y, Math.max(2.5, w * r), hh, 2.4); c.fill();
+      label(c, 'Boîte dorée', s.x, y - 12, 15, '#ffe27a', 'center', 0.3);
+      return;
+    }
     if (!this.onScreen(s.x, s.y, 120)) return;
-    const c = this.ctx, w = s.kind === 'tower' ? 70 : 44, hh = s.kind === 'tower' ? 8 : 5.5, x = s.x - w / 2, y = s.kind === 'tower' ? 286 : s.y - 62;
+    const c = this.ctx, w = s.kind === 'tower' ? 90 : 54, hh = s.kind === 'tower' ? 10 : 7, x = s.x - w / 2, y = s.kind === 'tower' ? TOWER.bar : s.y - 56;
     const col = s.kind === 'tower' ? (s.side < 0 ? ['#ffe9a0', '#f0b030'] : s.side === 0 ? ['#8fe0ff', '#1f8fe6'] : ['#ff9a84', '#d92a20']) : ['#ffdf9a', '#d9902a'];
     c.fillStyle = 'rgba(16,10,8,.92)'; rr(c, x - 1.6, y - 1.6, w + 3.2, hh + 3.2, 3.4); c.fill();
     c.fillStyle = '#3b2e2c'; rr(c, x, y, w, hh, 2.4); c.fill();
     const g = c.createLinearGradient(0, y, 0, y + hh); g.addColorStop(0, col[0]); g.addColorStop(1, col[1]);
     c.fillStyle = g; rr(c, x, y, Math.max(2.5, w * r), hh, 2.4); c.fill();
-    if (s.kind === 'tower') label(c, s.side < 0 ? 'Cage' : s.side === 0 ? 'À toi' : 'Adverse', s.x, y - 9, 11, s.side < 0 ? '#ffe9a0' : TEAM_LITE[s.side], 'center', 0.3);
+    if (s.kind === 'tower') label(c, s.side < 0 ? 'Cage' : s.side === 0 ? 'À toi' : 'Adverse', s.x, y - 11, 14, s.side < 0 ? '#ffe9a0' : TEAM_LITE[s.side], 'center', 0.3);
   }
 
   // vie de la catapulte (quand elle a souffert, ou en mode ordres) ; cassée : la réparation qui avance
   drawCataBar(s, ui) {
-    if (!this.onScreen(s.x, s.y, 120)) return;
-    const c = this.ctx, w = 58, hh = 6.5, x = s.x - w / 2, y = s.y - 74;
+    if (!this.onScreen(s.x, s.y, 160)) return;
+    const c = this.ctx, w = 80, hh = 8.5, x = s.x - w / 2, y = s.y - 124;
     if (s.dead) {
       const k = 1 - s.repairT / CATA.repair;
       c.fillStyle = 'rgba(16,10,8,.92)'; rr(c, x - 1.6, y - 1.6, w + 3.2, hh + 3.2, 3.4); c.fill();
       c.fillStyle = '#3b2e2c'; rr(c, x, y, w, hh, 2.4); c.fill();
       c.fillStyle = '#ffd23f'; rr(c, x, y, Math.max(2.5, w * clamp(k, 0, 1)), hh, 2.4); c.fill();
-      label(c, 'Réparation', s.x, y - 9, 11, '#ffe9a0', 'center', 0.3);
+      label(c, 'Réparation', s.x, y - 11, 14, '#ffe9a0', 'center', 0.3);
       return;
     }
     const r = s.hp / s.maxHp; if (r >= 1 && !ui.mode) return;
@@ -631,6 +698,50 @@ export class View {
     const g = c.createLinearGradient(0, y, 0, y + hh); g.addColorStop(0, col[0]); g.addColorStop(1, col[1]);
     c.fillStyle = g; rr(c, x, y, Math.max(2.5, w * r), hh, 2.4); c.fill();
   }
+
+  // ---------- la boîte dorée et son singe ----------
+  // La boîte tombe du ciel, rebondit, puis brille sur place (reflets de son image, lueur au sol, étincelles)
+  drawGoldBox(s, dt, ui) {
+    const c = this.ctx; let v = this.svis.get(s.id);
+    if (!v) { v = { hp: s.hp, flash: 0, age: 0 }; this.svis.set(s.id, v); }
+    if (s.hp < v.hp) v.flash = 1;
+    v.hp = s.hp; v.flash = Math.max(0, v.flash - dt * 6); v.age += dt;
+    const FALL = 0.5, t = v.age, k = Math.min(1, t / FALL), drop = t < FALL ? (1 - k * k) * 420 : 0;
+    const land = t - FALL, sq = land > 0 && land < 0.3 ? Math.sin(land / 0.3 * Math.PI) * 0.16 : 0;
+    const sc = WS * 1.18, pulse = 0.5 + 0.5 * Math.sin(this.time * 4), jx = v.flash > 0.4 ? rand(-1.5, 1.5) : 0;
+    // l'ombre grandit pendant la chute, puis la lueur dorée au sol
+    c.fillStyle = `rgba(14,8,24,${0.18 + 0.2 * k})`; ellipse(c, s.x, s.y + 2, 18 + 22 * k, 6 + 6 * k); c.fill();
+    if (land > 0) {
+      c.save(); c.globalCompositeOperation = 'lighter'; c.globalAlpha = 0.28 + 0.16 * pulse;
+      const G = sprites().glow; c.drawImage(G, s.x - 70, s.y - 26, 140, 52); c.restore();
+    }
+    const fr = Math.floor(this.time * 7) % 4;
+    drawUnitFrame(c, 'goldbox', 'box', fr, s.x + jx, s.y + 4 - drop, sc, 1, 1 + sq, 1 - sq);
+    if (v.flash > 0.02 || (ui.mode && land > 0)) {
+      c.save(); c.globalCompositeOperation = 'lighter';
+      drawUnitFrame(c, 'goldbox', 'box', fr, s.x + jx, s.y + 4 - drop, sc, Math.min(1, v.flash * 0.55 + (ui.mode ? 0.14 + 0.1 * pulse : 0)), 1 + sq, 1 - sq);
+      c.restore();
+    }
+    // des étincelles montent de la boîte
+    if (land > 0 && Math.random() < dt * 9) this.dot(s.x + rand(-28, 28), s.y - rand(10, 50), { vy: -rand(20, 50), g: -10, life: rand(0.5, 0.9), r: rand(0.9, 1.5), col: '255,222,110', add: true });
+  }
+  // Le singe doré court vite (8 images par direction), saute par-dessus l'eau (haut, et loin de son ombre), laisse des
+  // paillettes derrière lui, et lance ses bananes en sautillant
+  drawGoldMonkey(m, dt, a) {
+    const c = this.ctx, x = m.px + (m.x - m.px) * a, y = m.py + (m.y - m.py) * a;
+    let hgt = 0;
+    for (const [s0, s1] of m.jumps) if (m.s > s0 && m.s < s1) hgt = Math.sin(Math.PI * (m.s - s0) / (s1 - s0)) * (24 + 0.45 * (s1 - s0));
+    const al = m.leaving > 0 ? clamp(m.leaving / 0.5, 0, 1) : 1, pop = m.t < 0.35 ? 0.4 + 0.6 * easeOut(m.t / 0.35) : 1;
+    const thr = m.throwT < 0.3 ? Math.sin(m.throwT / 0.3 * Math.PI) : 0, hop = thr * 10 + (m.moving ? Math.abs(Math.sin(this.time * 16)) * 3 : Math.abs(Math.sin(this.time * 5)) * 2);
+    const S = sprites(), sw = 46 * (1 - Math.min(0.55, hgt / 150));
+    c.globalAlpha = 0.85 * al; c.drawImage(S.shadow, x - sw / 2, y - sw / 4 + 2, sw, sw / 2);
+    c.save(); c.globalCompositeOperation = 'lighter'; c.globalAlpha = (0.32 + 0.12 * Math.sin(this.time * 9)) * al; c.drawImage(S.glow, x - 34, y - 14 - hgt * 0.3, 68, 28); c.restore();
+    c.globalAlpha = 1;
+    const anim = 'run_' + dir4(m.fx, m.fy), fr = m.moving || hgt > 0 ? Math.floor(this.time * 15) : 0;
+    drawUnitFrame(c, 'goldmonkey', anim, fr, x, y - hgt - hop, WS * 1.25 * pop, al, 1 + thr * 0.1, 1 - thr * 0.08);
+    if (al > 0.3 && Math.random() < (m.moving ? 0.7 : 0.25)) this.dot(x + rand(-12, 12), y - hgt - rand(8, 44), { vx: -m.fx * rand(10, 40), vy: -rand(10, 40), g: 20, life: rand(0.35, 0.7), r: rand(0.9, 1.6), col: Math.random() < 0.5 ? '255,226,120' : '255,250,210', add: true });
+  }
+  miniShown() { return this.cam.z > ZOOM.min + 0.05; }
 
   // ---------- animaux ----------
   drawUnit(u, dt, a, b, ui) {
@@ -649,11 +760,25 @@ export class View {
     const r = u.r / WS, big = r > 30, P = (dx, dy) => [x + dx * WS, y + dy * WS];
     let alpha = 1, sx = 1, sy = 1, ox = 0, oy = 0, rot = 0, shadowK = 1;
     const lift = u.air ? AIR_LIFT + Math.sin(this.time * 3 + v.bob) * 6 : 0, swim = u.swim;
+    // sous un pont, un nageur plonge : il s'enfonce en approchant du tablier, passe dessous sans qu'on le voie, et
+    // ressort de l'autre côté dans une gerbe d'eau
+    const sink = swim ? sinkAt(x, y) : 0;
+    if (swim && !u.dead) {
+      const was = v.sk === undefined ? sink : v.sk;
+      if (was < 0.45 && sink >= 0.45) {
+        this.ripple(x, y + 2, 30, 0.8, 0.75); this.ripple(x, y + 2, 46, 1.1, 0.5);
+        for (let i = 0; i < 6; i++) this.dot(x + rand(-0.6, 0.6) * u.r, y - 2, { vx: rand(-25, 25), vy: -rand(40, 80), g: 300, r: rand(1, 1.8), col: '220,245,255', life: 0.45 });
+      } else if (was > 0.85 && sink <= 0.85) {
+        this.ripple(x, y + 2, 34, 0.9, 0.8); this.ripple(x, y + 2, 52, 1.2, 0.5);
+        for (let i = 0; i < 10; i++) { const an = rand(0, 6.283); this.dot(x + Math.cos(an) * u.r * 0.5, y - 4, { vx: Math.cos(an) * rand(20, 55), vy: -rand(60, 120), g: 320, r: rand(1.1, 2), col: '220,245,255', life: 0.6 }); }
+      }
+      v.sk = sink;
+    }
     // arrivée : il tombe, s'écrase un peu, puis attend la fin de son temps de pose (un nageur, lui, sort de l'eau)
     if (swim) {
       if (!v.landed) {
         v.landed = true;
-        if (v.age < 1) { for (let i = 0; i < 3; i++) this.ripple(x, y + 2, 14 + i * 6, 0.7 + i * 0.25, 0.8); for (let i = 0; i < 12; i++) { const an = rand(0, 6.283); this.dot(x + Math.cos(an) * 6, y - 2, { vx: Math.cos(an) * rand(20, 60), vy: -rand(50, 110), g: 320, r: rand(1.2, 2.2), col: '200,240,255', life: 0.6 }); } }
+        if (v.age < 1) { for (let i = 0; i < 3; i++) this.ripple(x, y + 2, 26 + i * 11, 0.7 + i * 0.25, 0.8); for (let i = 0; i < 12; i++) { const an = rand(0, 6.283); this.dot(x + Math.cos(an) * 6, y - 2, { vx: Math.cos(an) * rand(20, 60), vy: -rand(50, 110), g: 320, r: rand(1.2, 2.2), col: '200,240,255', life: 0.6 }); } }
       }
       if (v.age < 0.5) { const k = v.age / 0.5; alpha = Math.min(1, k * 2.2); oy = (1 - k) * 18; sy = 0.5 + 0.5 * k; sx = 1.1 - 0.1 * k; }
       shadowK = 0;
@@ -675,7 +800,7 @@ export class View {
     if (u.dead && swim) {        // un nageur vaincu coule, dans un remous de bulles
       const t = u.deadT; if (t > 0.8) return; const k = t / 0.8; alpha = 1 - k; oy += 22 * k; sy *= 1 - 0.3 * k; shadowK = 0;
       if (Math.random() < 0.5) this.dot(x + rand(-u.r, u.r), y - rand(0, 6), { vy: -rand(20, 50), r: rand(1, 2), col: '220,245,255', life: 0.5 });
-      if (!v.sank) { v.sank = true; this.ripple(x, y + 2, 18, 1.1, 0.8); this.ripple(x, y + 2, 26, 1.4, 0.6); }
+      if (!v.sank) { v.sank = true; this.ripple(x, y + 2, 32, 1.1, 0.8); this.ripple(x, y + 2, 46, 1.4, 0.6); }
     } else if (u.dead) { const t = u.deadT; if (t > 0.42) return; const k = t / 0.42; alpha = 1 - k * k; sy *= 1 + 0.18 * Math.sin(k * Math.PI) - 0.35 * k; sx *= 1 + 0.22 * Math.sin(k * Math.PI) - 0.2 * k; oy -= 26 * k; shadowK = 1 - k; }
     // direction : une petite inertie évite que l'animal tremble entre deux orientations voisines
     if (u.fx || u.fy) {
@@ -702,7 +827,7 @@ export class View {
       if (u.stun > 0) { ox = Math.sin(this.time * 30) * 2.5; rot += Math.sin(this.time * 9) * 0.05; }
       v.rip = (v.rip || 0) - dt;
       if (v.rip <= 0) { v.rip = mv ? 0.28 : 0.85; this.ripple(x - u.fx * u.r * 0.6, y + 2, u.r * (mv ? 1.1 : 1.5), mv ? 0.7 : 1.1, mv ? 0.6 : 0.4); }
-      if (mv && Math.random() < 0.5) this.dot(x - u.fx * u.r * 0.9 + rand(-3, 3), y + rand(-1, 3), { vx: -u.fx * 18 + rand(-10, 10), vy: -u.fy * 8 - rand(0, 18), g: 90, r: rand(1, 1.8), col: '235,250,255', life: 0.45 });
+      if (mv && sink < 0.3 && Math.random() < 0.5) this.dot(x - u.fx * u.r * 0.9 + rand(-3, 3), y + rand(-1, 3), { vx: -u.fx * 18 + rand(-10, 10), vy: -u.fy * 8 - rand(0, 18), g: 90, r: rand(1, 1.8), col: '235,250,255', life: 0.45 });
     } else if (u.moving && u.spawn <= 0) {
       v.walk += dt * (6 + u.s.speed * 3.5) * (u.charging ? 1.6 : 1) * (u.slowT > 0 ? 0.6 : 1); frame = Math.floor(v.walk) % 4;
       const ph = v.walk * Math.PI / 2, hop = Math.abs(Math.sin(ph));
@@ -713,14 +838,16 @@ export class View {
     else if (u.stun > 0) { ox = Math.sin(this.time * 30) * 2.5; rot = Math.sin(this.time * 9) * 0.05; }
     else if (u.air) { v.walk += dt * 6; frame = Math.floor(v.walk) % 4; }
     else { const br = Math.sin(this.time * 2.6 + u.id); sy *= 1 + br * 0.018; sx *= 1 - br * 0.008; }
-    c.save(); c.translate(x, y); c.scale(WS, WS);
+    if (sink > 0) oy += sink * (d.walkH + 8);
+    c.save(); if (swim) this.clipDecks(x, y);
+    c.translate(x, y); c.scale(WS, WS);
     // au sol : anneau du camp, ombre douce (dans l'eau : l'anneau seulement, plus discret, et l'eau assombrie sous le corps)
     const ring = u.side === 0 ? S.ring0 : S.ring1, gy = 3;
     if (!u.dead && (swim || v.age >= DROP_T * 0.6)) {
       const rw = r * (u.air ? 1.15 : swim ? 1.6 : 1.42), pulse = v.ready > 0 && v.ready < 2 ? 1 + 0.5 * Math.sin(Math.min(1, v.ready) * Math.PI) * (1 - v.ready / 2) : 1;
-      c.globalAlpha = (u.air ? 0.55 : swim ? 0.6 : 0.9) * alpha; c.drawImage(ring, -rw * pulse, gy - rw * 0.5 * pulse, rw * 2 * pulse, rw * pulse); c.globalAlpha = 1;
+      c.globalAlpha = (u.air ? 0.55 : swim ? 0.6 : 0.9) * alpha * (1 - sink); c.drawImage(ring, -rw * pulse, gy - rw * 0.5 * pulse, rw * 2 * pulse, rw * pulse); c.globalAlpha = 1;
     }
-    if (swim) { c.fillStyle = `rgba(10,40,90,${0.22 * alpha})`; ellipse(c, 0, gy - 2, r * 1.25, r * 0.5); c.fill(); }
+    if (swim) { c.fillStyle = `rgba(10,40,90,${0.22 * alpha * (1 - sink)})`; ellipse(c, 0, gy - 2, r * 1.25, r * 0.5); c.fill(); }
     else { const sw = r * (u.air ? 0.95 : 1.5) * shadowK, sh = sw * 0.5; c.globalAlpha = (u.air ? 0.5 : 0.95) * alpha * (0.4 + 0.6 * shadowK); c.drawImage(S.shadow, -sw + (u.air ? 10 : 3), gy - sh + (u.air ? 6 : 1), sw * 2, sh * 2); c.globalAlpha = 1; }
     // temps de pose : petit cadran qui se vide autour des pattes
     if (u.spawn > 0 && v.landed) {
@@ -734,6 +861,13 @@ export class View {
     const halo = (rgb, al, kw = 3.6, kh = 1.5) => { c.globalCompositeOperation = 'lighter'; c.globalAlpha = al; c.fillStyle = `rgb(${rgb})`; const gw = r * kw, gh = H2 * kh; c.drawImage(S.glow, fxp - gw / 2, fy - H2 * 0.48 - gh / 2, gw, gh); c.globalAlpha = 1; c.globalCompositeOperation = 'source-over'; };
     if (u.buff) halo('255,255,255', 0.26 + 0.1 * Math.sin(this.time * 11));
     if (u.rage > 0) { c.globalCompositeOperation = 'lighter'; c.globalAlpha = Math.min(0.5, 0.1 + 0.055 * u.rage) * (0.8 + 0.2 * Math.sin(this.time * 9)); c.fillStyle = '#ff2a1a'; ellipse(c, fxp, fy - H2 * 0.4, r * 1.5, H2 * 0.62); c.fill(); c.globalAlpha = 1; c.globalCompositeOperation = 'source-over'; }
+    if (sink > 0.002) {      // il plonge : sous la surface, une silhouette bleutée ; au-dessus, le corps coupé à la ligne d'eau
+      c.save(); c.beginPath(); c.rect(-300, 3, 600, 300); c.clip();
+      if (CANFILTER) c.filter = 'brightness(0.55) sepia(1) hue-rotate(165deg) saturate(2.4)';
+      drawUnitFrame(c, key, anim, frame, fxp, fy, 1, alpha * 0.32 * (1 - sink), sx, sy, rot);
+      c.restore();
+      c.save(); c.beginPath(); c.rect(-300, -700, 600, 703); c.clip();
+    }
     drawUnitFrame(c, key, anim, frame, fxp, fy, 1, alpha, sx, sy, rot);
     const glow = v.flash * 0.85 + (u.charging ? 0.22 : 0) + (u.dead ? 0.6 : 0) + (v.age < DROP_T + 0.12 ? 0.5 : 0) + (v.ready > 0 && v.ready < 1 ? 0.35 * (1 - v.ready) : 0)
       + (ui.mode && !u.dead ? 0.14 + 0.1 * Math.sin(this.time * 7 + u.id) : 0) + (ui.picked.has(u.id) ? 0.16 : 0) + (u.plateT > 0 ? 0.25 + 0.2 * Math.sin(this.time * 14) : 0);
@@ -751,7 +885,17 @@ export class View {
       c.lineWidth = 4; c.strokeStyle = `rgba(255,240,170,${0.7 + 0.3 * pu})`; c.stroke();
     }
     if (u.stun > 0 && !u.dead) this.drawFx('dizzy_stars', Math.sin(this.time * 5) * 5, fy - H2 - 4, 0.34, Math.sin(this.time * 4) * 0.2, 1);
+    if (sink > 0.002) {
+      c.restore();
+      if (sink < 0.97) {      // l'écume là où le corps traverse la surface
+        const fa = Math.sin(Math.min(1, sink * 1.15) * Math.PI) * alpha, fw = r * (1.05 + 0.08 * Math.sin(this.time * 9 + v.bob));
+        c.fillStyle = `rgba(235,250,255,${0.5 * fa})`; ellipse(c, 0, 3, fw, 5); c.fill();
+        c.fillStyle = `rgba(255,255,255,${0.75 * fa})`; ellipse(c, 0, 2, fw * 0.62, 2.4); c.fill();
+      }
+    }
     c.restore();
+    v.sunk = sink > 0.55;
+    if (v.sunk) { v.top = y + (fy - H2 - 10) * WS; v.x = x; return; }
     // petits effets qui s'échappent de l'animal
     const head = P(rand(-14, 14), fy - H2 * 0.8);
     if (u.poison && Math.random() < 0.1) this.fx('skull_green', head[0], head[1], { s0: 0.05, s1: 0.1, life: 0.6, vy: -50, a: 0.8 });
@@ -764,7 +908,7 @@ export class View {
   }
   drawUnitBar(u, ui) {
     if (u.dead || u.spawn > 0) return;
-    const v = this.vis.get(u.id); if (!v || v.top === undefined) return;
+    const v = this.vis.get(u.id); if (!v || v.top === undefined || v.sunk) return;
     const r = u.hp / u.maxHp;
     v.lag += (r - v.lag) * 0.08; if (v.lag < r) v.lag = r;
     const extra = u.shield > 0 || u.rage > 0 || u.plate > 0 || u.water > 0 || ui.picked.has(u.id) || ui.mode;
@@ -792,46 +936,56 @@ export class View {
   // Le rocher de la catapulte : il tourne en l'air, son ombre file au sol jusqu'à sa cible. Le gros (tiré du centre sur
   // le camp adverse) grossit en haut de sa course, comme s'il passait près de la caméra ; le petit (défense du camp) non.
   drawBoulder(p, small = false) {
-    const c = this.ctx, k = p.k || 0, g0 = p.sy + 50, gx = p.sx + (p.tx - p.sx) * k, gy = g0 + (p.ty - g0) * k, up = Math.sin(Math.PI * k);
-    c.fillStyle = `rgba(0,0,0,${0.16 + 0.22 * (1 - up)})`; ellipse(c, gx, gy, (small ? 7 : 14) + (small ? 4 : 10) * (1 - up), (small ? 3 : 5) + (small ? 2 : 4) * (1 - up)); c.fill();
-    const R = small ? 8 + 2 * up : 16 + 13 * up;
+    const c = this.ctx, k = p.k || 0, g0 = p.sy + 84, gx = p.sx + (p.tx - p.sx) * k, gy = g0 + (p.ty - g0) * k, up = Math.sin(Math.PI * k);
+    c.fillStyle = `rgba(0,0,0,${0.16 + 0.22 * (1 - up)})`; ellipse(c, gx, gy, (small ? 12 : 23) + (small ? 7 : 17) * (1 - up), (small ? 5 : 8) + (small ? 3 : 7) * (1 - up)); c.fill();
+    const R = small ? 13 + 3 * up : 27 + 21 * up;
     c.save(); c.translate(p.x, p.y); c.rotate(this.time * 7);
     c.beginPath(); ROCK.forEach(([an, q], i) => { const x = Math.cos(an) * R * q, y = Math.sin(an) * R * q; if (i) c.lineTo(x, y); else c.moveTo(x, y); }); c.closePath();
     const g = c.createRadialGradient(-R * 0.3, -R * 0.35, 2, 0, 0, R * 1.1); g.addColorStop(0, '#ecd0a8'); g.addColorStop(0.55, '#a87a50'); g.addColorStop(1, '#5a3a24');
-    c.fillStyle = g; c.fill(); c.lineWidth = 3; c.strokeStyle = '#2a1608'; c.lineJoin = 'round'; c.stroke();
+    c.fillStyle = g; c.fill(); c.lineWidth = 4.5; c.strokeStyle = '#2a1608'; c.lineJoin = 'round'; c.stroke();
     c.fillStyle = 'rgba(255,255,255,.32)'; ellipse(c, -R * 0.3, -R * 0.38, R * 0.28, R * 0.16); c.fill();
     c.restore();
-    if (Math.random() < (small ? 0.25 : 0.6)) this.fx('smoke_puff', p.x + rand(-6, 6), p.y + rand(-6, 6), { s0: small ? 0.05 : 0.1, s1: small ? 0.14 : 0.26, life: 0.5, a: 0.55 });
+    if (Math.random() < (small ? 0.25 : 0.6)) this.fx('smoke_puff', p.x + rand(-10, 10), p.y + rand(-10, 10), { s0: small ? 0.05 : 0.1, s1: small ? 0.14 : 0.26, life: 0.5, a: 0.55 });
   }
   // bulle, boule d'eau, vague : de l'eau qui brille, et des gouttes qui s'en échappent
   drawWater(p) {
     const c = this.ctx, t = this.time, an = p.ang !== undefined ? p.ang : Math.atan2(p.ty - p.y, p.tx - p.x);
     if (p.key === 'wave') {
-      c.save(); c.translate(p.x, p.y); c.rotate(an); c.lineCap = 'round';
+      c.save(); c.translate(p.x, p.y); c.rotate(an); c.scale(1.8, 1.8); c.lineCap = 'round';
       for (let i = 0; i < 3; i++) { c.strokeStyle = i ? `rgba(225,248,255,${0.9 - i * 0.25})` : 'rgba(40,140,230,.85)'; c.lineWidth = i ? 2.6 - i * 0.7 : 6; c.beginPath(); c.arc(-i * 5, 0, 13 - i * 2, -1.15, 1.15); c.stroke(); }
       c.restore(); c.lineCap = 'butt';
-      if (Math.random() < 0.8) this.dot(p.x + rand(-6, 6), p.y + rand(-8, 8), { vx: -Math.cos(an) * 30, vy: -Math.sin(an) * 30 - 20, g: 200, r: rand(1.2, 2.2), col: '200,240,255', life: 0.4 });
+      if (Math.random() < 0.8) this.dot(p.x + rand(-11, 11), p.y + rand(-14, 14), { vx: -Math.cos(an) * 30, vy: -Math.sin(an) * 30 - 20, g: 200, r: rand(1.2, 2.2), col: '200,240,255', life: 0.4 });
       return;
     }
-    const n = p.key === 'bubbles' ? 3 : 1, R0 = p.key === 'waterball' ? 6.5 : p.key === 'bubbles' ? 4.5 : 4;
+    const n = p.key === 'bubbles' ? 3 : 1, R0 = 1.8 * (p.key === 'waterball' ? 6.5 : p.key === 'bubbles' ? 4.5 : 4);
     for (let i = 0; i < n; i++) {
-      const ox = n > 1 ? Math.cos(t * 6 + i * 2.1) * 5 : 0, oy = n > 1 ? Math.sin(t * 6 + i * 2.1) * 3 : 0, R = R0 * (1 + 0.08 * Math.sin(t * 14 + i));
+      const ox = n > 1 ? Math.cos(t * 6 + i * 2.1) * 9 : 0, oy = n > 1 ? Math.sin(t * 6 + i * 2.1) * 5.4 : 0, R = R0 * (1 + 0.08 * Math.sin(t * 14 + i));
       const x = p.x + ox, y = p.y + oy, g = c.createRadialGradient(x - R * 0.35, y - R * 0.4, 0.5, x, y, R);
       if (p.key === 'waterball') { g.addColorStop(0, '#e8fbff'); g.addColorStop(0.45, '#58c4ff'); g.addColorStop(1, '#1f6fd0'); }
       else { g.addColorStop(0, 'rgba(255,255,255,.95)'); g.addColorStop(0.5, 'rgba(170,230,255,.35)'); g.addColorStop(1, 'rgba(120,200,255,.55)'); }
       c.fillStyle = g; c.beginPath(); c.arc(x, y, R, 0, 6.3); c.fill();
-      c.lineWidth = 1.2; c.strokeStyle = p.key === 'waterball' ? 'rgba(20,60,140,.7)' : 'rgba(255,255,255,.85)'; c.stroke();
+      c.lineWidth = 2; c.strokeStyle = p.key === 'waterball' ? 'rgba(20,60,140,.7)' : 'rgba(255,255,255,.85)'; c.stroke();
     }
     if (Math.random() < (p.key === 'waterball' ? 0.7 : 0.25)) this.dot(p.x + rand(-3, 3), p.y + rand(-3, 3), { vx: -Math.cos(an) * 25, vy: -Math.sin(an) * 25, g: 160, r: rand(1, 1.8), col: '170,225,255', life: 0.35 });
   }
   drawProj(p) {
     const c = this.ctx;
     if (p.key === 'boulder' || p.key === 'stone') { this.drawBoulder(p, p.key === 'stone'); return; }
-    if (p.arc) { const gy = p.sy + (p.ty - p.sy) * (p.k || 0) + (p.info.tower ? (1 - (p.k || 0)) * 150 : 18); c.fillStyle = 'rgba(0,0,0,.25)'; ellipse(c, p.x, gy, 7.5, 3.2); c.fill(); }
+    if (p.arc) { const k = p.k || 0, g0 = p.info.tower ? p.sy + 230 : p.info.sy, gy = g0 + (p.ty - g0) * k; c.fillStyle = 'rgba(0,0,0,.25)'; ellipse(c, p.x, gy, 13, 5.5); c.fill(); }
     if (p.key === 'bubble' || p.key === 'bubbles' || p.key === 'waterball' || p.key === 'wave') { this.drawWater(p); return; }
+    if (p.key === 'banana') {    // la banane dorée tourne en l'air et sème des paillettes
+      c.save(); c.translate(p.x, p.y); c.rotate(this.time * 11 + p.T * 7); c.scale(1.25, 1.25);
+      c.beginPath(); c.arc(0, -4, 12, 0.35, Math.PI - 0.35); c.arc(0, -10, 10.5, Math.PI - 0.6, 0.6, true); c.closePath();
+      const g = c.createLinearGradient(-10, -4, 10, 9); g.addColorStop(0, '#fff8c4'); g.addColorStop(0.45, '#ffd53f'); g.addColorStop(1, '#d48c0c');
+      c.fillStyle = g; c.fill(); c.lineWidth = 2.2; c.lineJoin = 'round'; c.strokeStyle = '#5e3406'; c.stroke();
+      c.fillStyle = '#5e3406'; c.beginPath(); c.arc(-11.2, 0.6, 1.9, 0, 6.3); c.fill(); c.beginPath(); c.arc(11.2, 0.6, 1.9, 0, 6.3); c.fill();
+      c.restore();
+      if (Math.random() < 0.7) this.dot(p.x + rand(-5, 5), p.y + rand(-5, 5), { vy: rand(-10, 25), life: rand(0.3, 0.5), r: rand(0.9, 1.4), col: '255,228,120', add: true });
+      return;
+    }
     if (p.key === 'gust') {      // bourrasque : croissants d'air qui filent
       const an = p.ang !== undefined ? p.ang : Math.atan2(p.ty - p.y, p.tx - p.x);
-      c.save(); c.translate(p.x, p.y); c.rotate(an); c.lineCap = 'round';
+      c.save(); c.translate(p.x, p.y); c.rotate(an); c.scale(1.8, 1.8); c.lineCap = 'round';
       for (let i = 0; i < 3; i++) { const q = (this.time * 5 + i / 3) % 1, rr2 = 5 + i * 3.4; c.strokeStyle = `rgba(235,250,255,${0.85 - i * 0.22})`; c.lineWidth = 2.6 - i * 0.6; c.beginPath(); c.arc(-i * 6 - q * 3, 0, rr2, -1.0, 1.0); c.stroke(); }
       c.restore(); c.lineCap = 'butt';
       if (Math.random() < 0.5) this.fx('wind_leaves', p.x, p.y, { s0: 0.08, s1: 0.16, life: 0.3, a: 0.6, rot: rand(0, 6) });
@@ -904,7 +1058,10 @@ export class View {
   }
   // ---------- mini-carte : toute l'arène, les animaux, les tours, et le cadre de ce que montre la caméra ----------
   drawMini(b, ui) {
+    for (let i = this.pings.length - 1; i >= 0; i--) { const p = this.pings[i]; p.age += 1 / 60; if (p.age > 1.6) this.pings.splice(i, 1); }
+    const show = clamp((this.cam.z - ZOOM.min - 0.05) / 0.12, 0, 1); if (show <= 0) return;
     const c = this.ctx, [x, y, w, h] = HUD.mini, k = w / MAP_W, im = IMG.mini, R = this.R;
+    c.save(); c.globalAlpha = show;
     c.fillStyle = '#0c0814'; rr(c, x - 5, y - 5, w + 10, h + 10, 14); c.fill();
     c.save(); rr(c, x, y, w, h, 10); c.clip();
     if (im && im.width) c.drawImage(im, x, y, w, h); else { c.fillStyle = '#3d6b2a'; c.fillRect(x, y, w, h); }
@@ -916,15 +1073,18 @@ export class View {
       c.fillStyle = '#0c0814'; c.beginPath(); c.moveTo(cx, cy - 8); c.lineTo(cx + 8, cy); c.lineTo(cx, cy + 8); c.lineTo(cx - 8, cy); c.closePath(); c.fill();
       c.fillStyle = cp.dead ? '#8a8496' : TEAM[cp.side]; c.beginPath(); c.moveTo(cx, cy - 5.5); c.lineTo(cx + 5.5, cy); c.lineTo(cx, cy + 5.5); c.lineTo(cx - 5.5, cy); c.closePath(); c.fill();
     }
-    for (const cp of b.camps) { const cx = x + cp.x * k, cy = y + (cp.side === 0 ? 124 : 14), r = Math.max(0, cp.hp) / cp.maxHp; c.fillStyle = '#0c0814'; rr(c, cx - 19, cy - 5, 38, 10, 4); c.fill(); c.fillStyle = TEAM[cp.side]; if (r > 0) { rr(c, cx - 17, cy - 3, 34 * r, 6, 3); c.fill(); } }
+    for (const cp of b.camps) { const cx = x + cp.x * k, cy = y + cp.y * k + (cp.side === 0 ? 10 : -10), r = Math.max(0, cp.hp) / cp.maxHp; c.fillStyle = '#0c0814'; rr(c, cx - 19, cy - 5, 38, 10, 4); c.fill(); c.fillStyle = TEAM[cp.side]; if (r > 0) { rr(c, cx - 17, cy - 3, 34 * r, 6, 3); c.fill(); } }
+    if (b.gold) {
+      const gb = b.gold.box; if (gb && !gb.dead) { const p = 0.5 + 0.5 * Math.sin(this.time * 8); c.fillStyle = '#2a1608'; c.fillRect(x + gb.x * k - 6, y + gb.y * k - 6, 12, 12); c.fillStyle = `rgb(255,${200 + 40 * p | 0},60)`; c.fillRect(x + gb.x * k - 4.5, y + gb.y * k - 4.5, 9, 9); }
+      for (const m of b.gold.monkeys) if (!m.gone) { c.fillStyle = '#2a1608'; c.beginPath(); c.arc(x + m.x * k, y + m.y * k, 6, 0, 6.3); c.fill(); c.fillStyle = '#ffd23f'; c.beginPath(); c.arc(x + m.x * k, y + m.y * k, 4.5, 0, 6.3); c.fill(); }
+    }
     for (const u of b.units) { if (u.dead) continue; c.fillStyle = '#0c0814'; c.beginPath(); c.arc(x + u.x * k, y + u.y * k, 5, 0, 6.3); c.fill(); c.fillStyle = ui.picked.has(u.id) ? '#fff27a' : TEAM[u.side]; c.beginPath(); c.arc(x + u.x * k, y + u.y * k, 3.4, 0, 6.3); c.fill(); }
-    for (let i = this.pings.length - 1; i >= 0; i--) {
-      const p = this.pings[i]; p.age += 1 / 60; if (p.age > 1.6) { this.pings.splice(i, 1); continue; }
-      for (const d of [0, 0.45]) { const q = (p.age + d) % 0.9 / 0.9; c.globalAlpha = (1 - q) * Math.min(1, (1.6 - p.age) * 2); c.lineWidth = 3; c.strokeStyle = p.col; c.beginPath(); c.arc(x + p.x * k, y + p.y * k, 4 + q * 18, 0, 6.3); c.stroke(); }
-      c.globalAlpha = 1;
+    for (const p of this.pings) {
+      for (const d of [0, 0.45]) { const q = (p.age + d) % 0.9 / 0.9; c.globalAlpha = show * (1 - q) * Math.min(1, (1.6 - p.age) * 2); c.lineWidth = 3; c.strokeStyle = p.col; c.beginPath(); c.arc(x + p.x * k, y + p.y * k, 4 + q * 18, 0, 6.3); c.stroke(); }
+      c.globalAlpha = show;
     }
     if (R) { c.lineWidth = 2.5; c.strokeStyle = '#fff'; c.strokeRect(x + Math.max(0, R.x0) * k, y + Math.max(0, R.y0) * k, (Math.min(MAP_W, R.x1) - Math.max(0, R.x0)) * k, (Math.min(MAP_H, R.y0 + (HUD_Y) / this.cam.z) - Math.max(0, R.y0)) * k); }
-    c.restore();
+    c.restore(); c.restore();
   }
 
   // ---------- barre du bas ----------
@@ -1048,3 +1208,4 @@ export class View {
     }
   }
 }
+

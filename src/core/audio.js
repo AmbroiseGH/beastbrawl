@@ -14,11 +14,14 @@ const NAMES = ['arrow', 'bite', 'buy', 'card_flip', 'card_fly', 'chest_land', 'c
   'victory', 'whistle', 'whoosh',
   // l'eau, les nageurs, les catapultes et leur singe
   'river', 'splash_in', 'bubbles', 'bubble_pop', 'water_spit', 'wave', 'dolphin_jump', 'tentacle', 'whirlpool', 'v_octo', 'v_dolphin', 'v_clownfish',
-  'cata_creak', 'cata_launch', 'cata_roll', 'cata_break', 'cata_ready', 'hammer', 'v_tuto'];
+  'cata_creak', 'cata_launch', 'cata_roll', 'cata_break', 'cata_ready', 'hammer', 'v_tuto',
+  // Barnabé selon ce qu'il ressent, la boîte dorée et son singe
+  'v_barn_happy', 'v_barn_think', 'v_barn_scared', 'v_barn_cheer', 'gold_appear', 'gold_break', 'gold_heal', 'v_goldmonkey'];
 // volume propre à chaque son (les autres : 1)
 const GAIN = { click: 0.55, tick: 0.5, swish: 0.6, whoosh: 0.6, hit: 0.55, hit2: 0.55, hit3: 0.55, hit4: 0.55, arrow: 0.35, coins: 0.7, heal: 0.6, card_fly: 0.7, deploy: 0.75, tower_hit: 0.5, poison: 0.6, v_kitten: 0.8, v_monkey: 0.75,
-  bubble_pop: 0.7, bubbles: 0.7, tentacle: 0.8, cata_roll: 0.7, hammer: 0.6, v_tuto: 0.8, v_clownfish: 0.8 };
-const MIN_GAP = { hit: 0.05, hit2: 0.05, hit3: 0.05, hit4: 0.05, arrow: 0.07, tower_hit: 0.09, coins: 0.06, heal: 0.15, tick: 0.03, bubble_pop: 0.06, bubbles: 0.12, tentacle: 0.07, water_spit: 0.08, splash: 0.06, cata_roll: 0.5 };
+  bubble_pop: 0.7, bubbles: 0.7, tentacle: 0.8, cata_roll: 0.7, hammer: 0.6, v_tuto: 0.8, v_clownfish: 0.8,
+  v_barn_happy: 0.7, v_barn_think: 0.7, v_barn_scared: 0.7, v_barn_cheer: 0.7, gold_appear: 0.8, gold_break: 0.85, gold_heal: 0.6, v_goldmonkey: 0.55 };
+const MIN_GAP = { gold_heal: 0.12, v_goldmonkey: 0.6, hit: 0.05, hit2: 0.05, hit3: 0.05, hit4: 0.05, arrow: 0.07, tower_hit: 0.09, coins: 0.06, heal: 0.15, tick: 0.03, bubble_pop: 0.06, bubbles: 0.12, tentacle: 0.07, water_spit: 0.08, splash: 0.06, cata_roll: 0.5 };
 
 function ensureCtx() {
   if (ctx) return ctx;
@@ -76,6 +79,40 @@ export function play(name, o = {}) {
   voices++; s.onended = () => { voices--; };
   s.start(now + (o.at || 0));
   return true;
+}
+
+// Joue un son calé sur l'horloge du son (pour y accrocher une animation) : renvoie l'instant, sur cette horloge, où il
+// commence (dans « lead » secondes), ou -1 s'il ne peut pas partir (son coupé ou bloqué par le navigateur).
+export function playSync(name, lead = 0.06, v = 1) {
+  if (!ctx || !vol() || !BUF[name] || ctx.state !== 'running') return -1;
+  const at = ctx.currentTime + lead, s = ctx.createBufferSource(), g = ctx.createGain();
+  s.buffer = BUF[name]; g.gain.value = v * (GAIN[name] || 1) * vol();
+  s.connect(g); g.connect(master); voices++; s.onended = () => { voices--; };
+  s.start(at); last[name] = at;
+  return at;
+}
+// L'instant de l'horloge du son que l'on entend en ce moment : le retard de la sortie (haut-parleur du téléphone, casque
+// Bluetooth…) est retiré, pour que l'image tombe pile avec ce qu'on entend.
+export function heardTime() {
+  if (!ctx) return -1;
+  if (ctx.getOutputTimestamp) {
+    const ts = ctx.getOutputTimestamp();
+    if (ts && ts.contextTime > 0 && ts.performanceTime > 0) return ts.contextTime + (performance.now() - ts.performanceTime) / 1000;
+  }
+  return ctx.currentTime - (ctx.outputLatency || ctx.baseLatency || 0);
+}
+// Une horloge (en secondes) qui suit un son lancé par playSync à l'instant « at » ; sans son (at < 0), le temps réel.
+// Si l'horloge du son s'arrête (onglet en arrière-plan…), on repasse sur le temps réel pour ne rien bloquer.
+export function syncClock(at) {
+  const p0 = performance.now();
+  if (at < 0 || !ctx) return () => (performance.now() - p0) / 1000;
+  let lastA = -1, lastP = p0, off = null;
+  return () => {
+    const now = performance.now(), a = heardTime() - at;
+    if (off !== null) return (now - p0) / 1000 - off;
+    if (a !== lastA) { lastA = a; lastP = now; } else if (now - lastP > 400) off = (now - p0) / 1000 - a;   // l'horloge du son est figée
+    return a;
+  };
 }
 
 // Un son qui tourne en boucle (le murmure de la rivière pendant un combat). Renvoie { set(v), stop() } ou null.

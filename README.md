@@ -12,16 +12,20 @@ Des combats d'animaux en temps réel, à la manière de Clash Royale.
 1. Chaque combat dure 3 minutes. Tu as une main de 4 cartes tirées de ton deck de 8. Glisse une carte sur ton côté
    de l'arène pour poser l'animal : chaque carte coûte de l'**Aura** (la partie commence avec 5, la jauge se recharge
    toute seule, deux fois plus vite pendant la dernière minute).
-2. La grande arène défile sous le doigt (deux doigts ou la molette pour zoomer, la mini-carte pour y aller). Les
-   animaux posés dans ta **zone bleue** (en bas) foncent vers le **camp adverse**, tout en haut. **Détruis-le pour
-   gagner tout de suite** ; sinon, le camp le moins abîmé gagne au bout des 3 minutes (à égalité : mort subite d'une
-   minute, le premier camp touché perd). Le camp le plus abîmé reçoit un coup de pouce : son Aura se recharge plus vite,
-   et sa catapulte tire et se répare plus vite.
-3. Chaque camp a sa **catapulte**, poussée par le **tutomonkey**. Au camp, elle bombarde les animaux qui approchent ;
+2. L'arène, toute en hauteur, tient entière dans l'écran du téléphone (deux doigts ou la molette pour zoomer, puis
+   glisser ; la mini-carte apparaît quand on zoome). Les animaux posés dans ta **zone bleue** (en bas) foncent vers le
+   **camp adverse**, tout en haut. **Détruis-le pour gagner tout de suite** ; sinon, le camp le moins abîmé gagne au
+   bout des 3 minutes (à égalité : mort subite d'une minute, le premier camp touché perd). Le camp le plus abîmé reçoit
+   un coup de pouce : son Aura se recharge plus vite, et sa catapulte tire et se répare plus vite.
+   Si la partie dure (entre 1 min 15 et 1 min 45 de jeu), une **boîte dorée** tombe au hasard du côté du camp en
+   retard. Le camp qui la casse libère un **singe doré** : il court très vite, saute par-dessus les rivières et lance
+   des bananes dorées qui rendent beaucoup de vie à ses animaux, puis s'en va.
+3. Chaque camp a sa **catapulte**, poussée par **Barnabé**, le singe du tutoriel. Au camp, elle bombarde les animaux qui approchent ;
    le bouton **Catapulte** (ou un toucher sur elle) l'envoie au centre, d'où elle lance un rocher sur le camp adverse
-   (5 % de sa vie) toutes les 11 secondes. Cassée, le singe la répare sur place.
-4. Les **nageurs** (poisson clown, poulpe, dauphin) se posent dans l'eau de ton camp et suivent la rivière. Ils frappent
-   tout sauf les volants (camp, tours, catapultes, animaux), et seuls les volants et les nageurs peuvent les toucher.
+   (5 % de sa vie) toutes les 11 secondes. Cassée, Barnabé la répare sur place.
+4. Les **nageurs** (poisson clown, poulpe, dauphin) se posent dans l'eau tout près de ton camp et suivent la rivière ;
+   ils plongent sous les ponts et ne s'arrêtent jamais dessous. Ils frappent tout sauf les volants (tours, catapultes,
+   animaux, et le camp adverse depuis l'eau qui l'entoure), et seuls les volants et les nageurs peuvent les toucher.
 5. Les **boîtes** cassées donnent un bonus à ton camp (un singe ou un chaton en renfort, des fruits qui soignent, une
    rage qui augmente les dégâts, de l'Aura). Les deux **tours** latérales ont un singe en haut : casse la tour adverse
    et son singe lance ses pierres pour toi, et tu peux poser tes animaux à côté. L'adversaire peut la reprendre.
@@ -41,12 +45,15 @@ Des combats d'animaux en temps réel, à la manière de Clash Royale.
 10. Les combats, les améliorations et les défis du jour rapportent de l'**expérience** (l'étoile violette) : des étoiles
    filent vers la jauge du haut, qui monte en tintant. Chaque niveau gagné rapporte des pièces et des gemmes.
 
-Le jeu s'ouvre sur le logo Michigan Studios, au son d'une guitare western. Si le navigateur bloque le son (iPhone,
-première visite), « Touche l'écran » s'affiche d'abord : le logo apparaît au toucher, avec sa guitare. Le jingle du
-chargement (avec le cri du gorille) accompagne la barre, qui arrive à 100 % au cri.
+Le jeu se lance tout seul sur le logo Michigan Studios : la lumière balaie le logo pile sur l'accord de guitare
+western. Puis vient l'écran de chargement, où les animaux bougent doucement, avec son jingle (et le cri du gorille,
+quand la barre arrive à 100 %). Si le navigateur interdit le son avant un premier toucher (iPhone, première visite),
+tout se lance quand même, en silence, et le son arrive au premier toucher.
 
-À la première visite, le **tutomonkey** fait visiter les menus, guide un combat d'entraînement contre un bot facile, puis
-offre un coffre en bois (des cartes communes et quelques rares). Le tutoriel se refait depuis les paramètres.
+À la première visite, **Barnabé** (le singe qui pousse les catapultes) fait visiter les menus, guide un combat
+d'entraînement contre un bot facile, puis offre un coffre en bois (des cartes communes et quelques rares). Pendant ses
+explications, le combat se fige et la caméra zoome sur ce dont il parle ; quand il attend un geste, une petite bulle le
+rappelle. Sa voix change avec son humeur (content, ravi, songeur, effrayé). Le tutoriel se refait depuis les paramètres.
 
 | Animal | Rareté | Aura | Rôle |
 | --- | --- | --- | --- |
@@ -64,7 +71,7 @@ offre un coffre en bois (des cartes communes et quelques rares). Le tutoriel se 
 | Rhinocéros | Légendaire | 6 | Charge, carapace de métal de plus en plus solide |
 | Éléphant | Ultime | 9 | Puise dans les rivières et arrose : l'ennemi est ralenti |
 
-Les bruitages (l'eau, les nageurs et les catapultes compris) et la guitare du logo ont été créés avec [Soundza](https://soundza.com) (sons générés par IA).
+Les bruitages (l'eau, les nageurs, les catapultes, la voix de Barnabé et la boîte dorée compris) et la guitare du logo ont été créés avec [Soundza](https://soundza.com) (sons générés par IA).
 
 ## Installer le jeu sur un téléphone
 
@@ -111,7 +118,7 @@ l'ordinateur, et il reçoit le résultat à sa prochaine connexion.
 | `src/data/` | tous les chiffres du jeu : animaux (`animals.js`), cartes, raretés, cages et boutique (`cards.js`), récompenses et arènes (`economy.js`), bots |
 | `src/game/` | le moteur de combat en temps réel (`rt.js`), les chemins par les ponts (`nav.js`), l'adversaire joué par l'ordinateur (`ai.js`) et la progression du joueur |
 | `src/render/` | le dessin du combat (caméra, arène vivante `mapfx.js`, animaux, effets, barre du bas) ; la carte et sa grille de marche sont dans `src/data/map.js` et `assets/map/` |
-| `src/ui/` | menus, boutique, collection, ouverture des cages (`chest.js`), fenêtres et déroulé d'un combat |
+| `src/ui/` | menus, boutique, collection, ouverture des cages (`chest.js`), fenêtres, déroulé d'un combat, tutoriel de Barnabé (`tuto.js`), logo et écran de chargement (`logo.js`, `loadart.js`) |
 | `src/online/` | le jeu en ligne |
 | `assets/` | images, sons et polices |
 | `tests/` | tests du moteur de combat, des cages et de la sauvegarde (`npm test`) |
