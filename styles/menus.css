@@ -89,16 +89,15 @@
 
 /* ---------- boutique ---------- */
 .of{position:absolute;pointer-events:none}
-.of-name{position:absolute;left:0;right:0;top:18px;text-align:center;font-size:36px}
-.of-tag{position:absolute;left:50%;top:62px;transform:translateX(-50%);display:flex;align-items:center;gap:4px;padding:3px 16px 6px 10px;border-radius:12px;background:rgba(10,20,60,.55);border:3px solid rgba(255,255,255,.45);font-size:22px}
-.of.r-rare .of-tag{background:rgba(110,50,0,.55)}.of.r-epic .of-tag{background:rgba(60,10,90,.55)}
-.of-card{position:absolute;left:50%;top:100px;width:196px;height:166px;transform:translateX(-50%);border-radius:18px;border:5px solid #1a1008;background:#222 top/196px auto no-repeat;box-shadow:0 8px 0 rgba(0,0,0,.35)}
-.of-new{position:absolute;right:-22px;top:-14px;padding:4px 12px 7px;border-radius:12px;background:#f0312b;border:4px solid #1a0a08;font-size:20px;transform:rotate(10deg);animation:pulse 1s ease-in-out infinite}
-.of-n{position:absolute;right:38px;top:226px;font-size:48px}
+.of-name{position:absolute;left:0;right:0;top:16px;text-align:center;font-size:36px}
+/* la carte entière (400 × 550), entre le nom et le prix */
+.of-card{position:absolute;left:50%;top:58px;width:146px;height:200px;transform:translateX(-50%);filter:drop-shadow(0 6px 0 rgba(0,0,0,.35))}
+.of-new{position:absolute;right:-14px;top:-20px;padding:4px 12px 7px;border-radius:12px;background:#f0312b;border:4px solid #1a0a08;font-size:20px;transform:rotate(10deg);animation:pulse 1s ease-in-out infinite}
+.of-n{position:absolute;right:14px;top:204px;font-size:46px}
 .of-price{position:absolute;left:28px;right:28px;bottom:14px;height:62px;display:flex;align-items:center;justify-content:center;gap:4px;padding-bottom:6px;font-size:34px;background:url('../assets/ui/btn_green.webp') center/100% 100% no-repeat}
 .of-price.no{color:#ffb4a8}
 .of-price.sold{background-image:url('../assets/ui/btn_stone.webp');color:#e8e8e8}
-.of.sold .of-card{filter:grayscale(.8) brightness(.7)}
+.of.sold .of-card{filter:grayscale(.8) brightness(.7) drop-shadow(0 6px 0 rgba(0,0,0,.35))}
 .of-reset{position:absolute;left:0;right:0;top:812px;text-align:center;font-size:21px;color:var(--cream);pointer-events:none}
 /* les 6 coffres (cases vides dans le fond) : nom sur le bandeau doré, rareté, image, prix sur la pastille verte */
 .sc{position:absolute;pointer-events:none}

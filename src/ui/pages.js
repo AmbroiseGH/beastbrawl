@@ -151,8 +151,8 @@ register('shop', (pg) => {
     const x = OFFER_X[i], a = ANIMALS[o.id], can = S.coins >= o.price;
     pg.append(h('div', { class: 'of r-' + o.rarity + (o.bought ? ' sold' : ''), style: { left: x + 'px', top: OFFER_Y + 'px', width: OFFER_W + 'px', height: OFFER_H + 'px' } },
       h('div', { class: 'of-name t sm' }, a.name),
-      h('div', { class: 'of-tag t xs' }, h('i', { class: 'ico coin' }), o.label),
-      h('div', { class: 'of-card', style: { backgroundImage: `url('assets/cards/${o.id}.webp')` } }, owned(o.id) ? null : h('div', { class: 'of-new t xs' }, 'Nouveau !')),
+      h('img', { class: 'of-card', src: `assets/cards/${o.id}.webp`, alt: '', draggable: 'false' }),   // la carte entière
+      owned(o.id) ? null : h('div', { class: 'of-new t xs' }, 'Nouveau !'),
       h('div', { class: 'of-n t' }, '×' + o.n),
       o.bought ? h('div', { class: 'of-price sold t sm' }, 'Acheté ✓') : h('div', { class: 'of-price t sm' + (can ? '' : ' no'), html: `<i class="ico coin"></i>${fmt(o.price)}` })),
     hit(x, OFFER_Y, OFFER_W, OFFER_H, () => offerTap(o), a.name));
@@ -176,7 +176,7 @@ function offerTap(o) {
   const has = owned(o.id), need = has ? upgradeCost(o.id, levelOf(o.id)) : null;
   const body = [
     h('div', { class: 'of-big' }, h('img', { src: `assets/cards/${o.id}.webp`, alt: a.name }), h('div', { class: 'of-n t' }, '×' + o.n)),
-    p(`${o.n} cartes <span style="color:${R.color}">${R.name.toLowerCase()}s</span> de ${a.name}`),
+    p(`${o.n} cartes <span style="color:${R.color}">${R.name.toLowerCase()}s</span> ${/^[aeiouyéèêàâîô]/i.test(a.name) ? 'd\'' : 'de '}${a.name}`),
     p(has ? `Tu en as ${fmt(cardsOf(o.id))}${need ? ' / ' + fmt(need.cards) + ' pour le niveau ' + (levelOf(o.id) + 1) : ''}.` : 'Tu n\'as pas encore cet animal : il rejoindra ta collection !', 'small'),
   ];
   const can = S.coins >= o.price;
