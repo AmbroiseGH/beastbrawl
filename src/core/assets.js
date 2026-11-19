@@ -2,6 +2,7 @@
 // (animaux en combat, coffres, dos de cartes, la grande arène) sont chargées à la demande avec ensure(), puis gardées.
 import { ANIMAL_IDS } from '../data/animals.js';
 import { CHEST_IDS } from '../data/cards.js';
+import { ARENA_MAPS } from '../data/arenas.js';
 
 export const IMG = {};     // images par nom
 // Image d'un coffre fermé (accueil, boutique, fiches, fin de combat)
@@ -47,14 +48,22 @@ export function json(key, path) {
 // (?v=4 : changé à chaque nouvelle version des planches, pour que l'ancienne copie gardée hors ligne ne serve plus ;
 // v4 = effets d'attaque sans halo noir)
 export const unitAssets = (id, hd) => { const k = hd ? id + '_hd' : id; return Promise.all([image(k, 'units/' + k + '.webp?v=4'), json(k, 'units/' + k + '.json?v=4')]); };
-// La grande arène : fond en haute définition, mini-carte, masque de l'eau (pour l'animer), éléments détourés (boîtes,
-// cages, tours, tente), barre du bas, fond flouté autour de l'écran, les singes des tours, les catapultes et leur
-// singe (Barnabé), la boîte dorée et son singe (?v=4 : la carte « arena » simplifiée)
+// La grande arène : fond en haute définition, mini-carte, éléments détourés (boîtes, cages, tours, tente, drapeaux des camps,
+// décors en relief), la lueur du Volcan, puis ce qui sert dans toutes : masque de l'eau (pour l'animer), barre du bas,
+// les singes des tours, les catapultes et leur singe (Barnabé), la boîte dorée et son singe.
+// Chaque arène a ses images (src/data/arenas.js) ; IMG.map, IMG.mini, IMG.props et IMG.glow désignent celles du combat
+// en cours. Arène 1 : ?v=4 (carte « arena » simplifiée), atlas ?v=5 (avec les drapeaux des camps).
 export const ARENA_SPRITES = ['towermonkey0', 'towermonkey1', 'cata0', 'cata1', 'tutomonkey', 'goldbox', 'goldmonkey'];
-export function mapAssets(n) {
-  return Promise.all([image('map', 'map/map.webp?v=4'), image('mini', 'map/mini.webp?v=4'), image('water', 'map/water.png?v=4'), image('props', 'map/props.webp?v=4'),
-    image('hud', 'arena/hud.webp'), image('field' + n, 'arena/field' + n + '.webp?v=3'), ...ARENA_SPRITES.map((k) => unitAssets(k))]);
+export async function mapAssets(n) {
+  const A = ARENA_MAPS[n - 1] || ARENA_MAPS[0], d = A.dir, v = A.id === 'arena' ? '?v=4' : '', k = (x) => x + '_' + A.id;
+  const [map, mini, props, glow] = await Promise.all([image(k('map'), d + 'map.webp' + v), image(k('mini'), d + 'mini.webp' + v),
+    image(k('props'), d + 'props.webp' + (A.id === 'arena' ? '?v=5' : '')), A.glow ? image(k('glow'), d + 'glow.webp') : null,
+    image('water', 'map/water.png?v=4'), image('hud', 'arena/hud.webp'), ...ARENA_SPRITES.map((s) => unitAssets(s))]);
+  Object.assign(IMG, { map, mini, props, glow });
+  return A;
 }
+// Image de la route des trophées (une bande de l'arène)
+export const roadImage = (n) => 'assets/' + (ARENA_MAPS[n - 1] || ARENA_MAPS[0]).dir + 'road.webp';
 // Planches des coffres (?v=4 : les 6 coffres de la mise à jour tropicale, l'ancienne copie gardée hors ligne ne doit pas servir)
 export const chestAssets = (tier) => image('sheet_' + tier, 'chests/' + tier + '.webp?v=4');
 export const backAssets = (r) => image('back_' + r, 'cards/back_' + r + '.webp');          // dos de carte (cadre de 640 px au centre d'une image de 940)

@@ -41,7 +41,10 @@ Des combats d'animaux en temps réel, à la manière de Clash Royale.
    les raretés : un coffre plus précieux rend seulement les cartes rares plus fréquentes.
 8. La boutique propose chaque jour trois offres de cartes payées en pièces (une commune, une rare, une épique) et les
    six coffres, payés en gemmes.
-9. Les trophées font monter d'arène (5 arènes, une tous les 300 trophées), chacune avec son ambiance et sa musique.
+9. Les trophées font monter d'arène, une tous les 300 trophées, chacune avec son décor, ses animations et sa musique :
+   **Île Tropicale** (0), **Royaume Sucré** (300, rivière de chocolat, vermicelles), **Canyon Brûlant** (600, poussière,
+   virevoltants, souches à contourner), **Volcan Rugissant** (900, lave qui luit, cendres, petits volcans à contourner)
+   et **Palais Royal** (1200, pétales et éclats d'or). La carte (ponts, tours, rivière) est la même partout.
 10. Les combats, les améliorations et les défis du jour rapportent de l'**expérience** (l'étoile violette) : des étoiles
    filent vers la jauge du haut, qui monte en tintant. Chaque niveau gagné rapporte des pièces et des gemmes.
 
@@ -117,9 +120,9 @@ l'ordinateur, et il reçoit le résultat à sa prochaine connexion.
 | Dossier | Contenu |
 | --- | --- |
 | `index.html`, `styles/` | la page et sa mise en forme |
-| `src/data/` | tous les chiffres du jeu : animaux (`animals.js`), cartes, raretés, coffres et boutique (`cards.js`), récompenses et arènes (`economy.js`), bots |
+| `src/data/` | tous les chiffres du jeu : animaux (`animals.js`), cartes, raretés, coffres et boutique (`cards.js`), récompenses et arènes (`economy.js`), bots ; ce qui change d'une arène à l'autre (`arenas.js`, généré) |
 | `src/game/` | le moteur de combat en temps réel (`rt.js`), les chemins par les ponts (`nav.js`), l'adversaire joué par l'ordinateur (`ai.js`) et la progression du joueur |
-| `src/render/` | le dessin du combat (caméra, arène vivante `mapfx.js`, animaux, effets, barre du bas) ; la carte et sa grille de marche sont dans `src/data/map.js` et `assets/map/` |
+| `src/render/` | le dessin du combat (caméra, arène vivante `mapfx.js` avec l'ambiance de chaque arène, animaux, effets, barre du bas) ; la carte et sa grille de marche sont dans `src/data/map.js`, les images dans `assets/map/` (l'Île Tropicale) et `assets/map/<arène>/` |
 | `src/ui/` | menus, boutique, collection, ouverture des coffres (`chest.js`), fenêtres, déroulé d'un combat, tutoriel de Barnabé (`tuto.js`), logo et écran de chargement (`logo.js`, `loadart.js`) |
 | `src/online/` | le jeu en ligne |
 | `assets/` | images, sons et polices |

@@ -16,7 +16,7 @@ import { friendsPopup } from './social.js';
 import { openChestAnim } from './chest.js';
 import { runTutorial, offerTutorial } from './tuto.js';
 import { Net } from '../online/net.js';
-import { chestIcon } from '../core/assets.js';
+import { chestIcon, roadImage } from '../core/assets.js';
 
 // Montre des gains : les icônes volent vers les compteurs du haut (l'XP : étoiles violettes et jauge animée, voir xpbar.js)
 export function showGain(r, from = [470, 836]) {
@@ -70,7 +70,7 @@ export function roadPopup() {
   const cur = arenaOf(S.trophies), rows = [];
   for (let a = ARENA_MAX; a >= 1; a--) {
     const [lo] = arenaRange(a);
-    rows.push(h('div', { class: 'ar' + (a === cur ? ' cur' : a < cur ? ' done' : a > cur ? ' lock' : ''), style: { backgroundImage: `url('assets/arena/field${a}.webp')` } },
+    rows.push(h('div', { class: 'ar' + (a === cur ? ' cur' : a < cur ? ' done' : a > cur ? ' lock' : ''), style: { backgroundImage: `url('${roadImage(a)}')` } },
       h('div', { class: 'n' }, h('div', { class: 't sm' }, 'Arène ' + a + ' · ' + ARENAS[a - 1].name), h('div', { class: 't xs cream' }, a === cur ? 'Tu es ici !' : a < cur ? 'Débloquée' : 'À débloquer')),
       h('div', { class: 'tr t sm' }, h('i'), fmt(lo) + (a === ARENA_MAX ? ' +' : ''))));
   }

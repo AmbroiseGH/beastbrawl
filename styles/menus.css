@@ -70,6 +70,7 @@
 .cslot.ready .cs-img{animation:csReady .7s ease-in-out infinite alternate;filter:drop-shadow(0 0 16px rgba(255,230,100,.95)) drop-shadow(0 8px 0 rgba(0,0,0,.4))}
 @keyframes csReady{from{transform:translateX(-50%) translateY(0) scale(1)}to{transform:translateX(-50%) translateY(-10px) scale(1.06)}}
 .cele-card{width:260px;margin:0 auto 18px}.cele-card img{width:100%;filter:drop-shadow(0 0 24px rgba(255,220,80,.8))}
+.cele-arena{width:660px;max-width:100%;margin:0 auto 18px}.cele-arena img{display:block;width:100%;border-radius:22px;border:5px solid #130d0c;box-shadow:0 0 0 4px #ffd23f,0 0 30px rgba(255,210,63,.75)}
 .wel-cage{display:block;width:280px;margin:0 auto 18px;filter:drop-shadow(0 0 30px rgba(255,220,80,.7))}
 
 /* ---------- fiche d'un coffre ---------- */

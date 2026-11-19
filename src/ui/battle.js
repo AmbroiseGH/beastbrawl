@@ -16,7 +16,7 @@
 import { $, h, wait, fmt, clamp, rand, countTo, TEST } from '../core/utils.js';
 import { S } from '../core/save.js';
 import { sfx, play, music, ambience } from '../core/audio.js';
-import { IMG, unitAssets, mapAssets, chestIcon } from '../core/assets.js';
+import { IMG, unitAssets, mapAssets, chestIcon, roadImage } from '../core/assets.js';
 import { CHESTS } from '../data/cards.js';
 import { ANIMALS } from '../data/animals.js';
 import { makeBot } from '../data/bots.js';
@@ -99,13 +99,13 @@ function enter(opp, mode, mine, arena, guide) {
   if (!V) { V = new View($('cv')); onResize((v) => V.resize(v.scale)); bindPointer(); }
   V.resize(stageView.scale); V.reset(arena);
   const lv = (d) => clamp(Math.round(avgLevel(d)), 1, 11);
-  const b = createBattle({ decks: [mine, opp.deck], towerLevels: [lv(mine), lv(opp.deck)], seed: newSeed() });
+  const b = createBattle({ decks: [mine, opp.deck], towerLevels: [lv(mine), lv(opp.deck)], seed: newSeed(), arena });
   if (mode === 'demo') { const cp = b.camps[1]; cp.maxHp = cp.hp = Math.round(cp.maxHp * 0.55); }      // le camp du bot d'entraînement tombe plus vite
   B = { b, mode, opp, arena, acc: 0, ai: makeAI(1, opp.skill), endShown: false, party: false, sec: 99, tips: guide ? [] : tipsFor(), thr: {}, intro: TEST ? 0 : 1.1, guide, cataGlow: 0, seen: {}, ham: [0, 0] };
   Object.assign(U, { sel: -1, drag: null, mode: false, picked: new Set(), pickNew: true, aim: null, hover: 0, g: null, pinch: null, mini: false, fling: null, zoneT: 0, zoneSwim: false, edgeT: 0 });
   U.pts.clear();
   if (!guide) say('Glisse une carte dans ta zone bleue', 6);
-  $('scrMenu').hidden = true; $('scrBattle').hidden = false; setBackdrop(IMG.mini || IMG['field' + arena]);
+  $('scrMenu').hidden = true; $('scrBattle').hidden = false; setBackdrop(IMG.mini);
   const hud = $('bHud'); hud.textContent = '';
   hud.append(h('button', { class: 'icbtn bflag', 'aria-label': 'Abandonner', onclick: quit }));
   music(ARENAS[arena - 1].music);
@@ -924,7 +924,7 @@ function showEnd(res, out, ranked) {
     (async () => {
       if (out.ups.length) await xpSettled();
       for (const u of out.ups) celebrate('Niveau ' + u.level + ' atteint !', null, `Récompense : ${rewardHtml({ coins: u.coins, rubies: u.rubies })}`);
-      if (out.arenaUp) celebrate(ARENAS[out.arenaUp - 1].name + ' débloquée !', null, `Arène ${out.arenaUp} : nouvelle ambiance, nouvelle musique et des coffres plus riches.`);
+      if (out.arenaUp) celebrate(ARENAS[out.arenaUp - 1].name + ' débloquée !', null, `Arène ${out.arenaUp} : nouveau décor, nouvelle musique et des coffres plus riches.`, roadImage(out.arenaUp));
     })();
     if (r.coins) fly('coin', [470, 900], TARGET.coin, 10, (i) => sfx.coin(i));
     if (r.paws) fly('paw', [470, 900], TARGET.paw, 6);

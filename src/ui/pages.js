@@ -213,8 +213,10 @@ function cagesInfo() {
 }
 
 // Petite fête plein écran (niveau gagné, arène débloquée)
-export function celebrate(title, id, sub) {
+// id : une carte d'animal à montrer ; img : ou une image (la nouvelle arène)
+export function celebrate(title, id, sub, img) {
   play('levelup');
-  const pic = id ? h('div', { class: 'cele-card pulse' }, h('img', { src: `assets/cards/${id}.webp`, alt: '' })) : null;
+  const pic = id ? h('div', { class: 'cele-card pulse' }, h('img', { src: `assets/cards/${id}.webp`, alt: '' }))
+    : img ? h('div', { class: 'cele-arena pulse' }, h('img', { src: img, alt: '' })) : null;
   modal({ title: 'Bravo !', color: 'yellow', body: [pic, p(title), sub ? p(sub, 'small') : null], buttons: [{ label: 'Super !', color: 'green' }] });
 }

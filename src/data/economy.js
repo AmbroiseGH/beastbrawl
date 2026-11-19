@@ -5,14 +5,15 @@
 export const xpNeed = (level) => Math.round(100 * Math.pow(level, 1.4) / 10) * 10;
 export const levelReward = (level) => ({ coins: 500 * level, rubies: 5 });
 
-// Arènes : une nouvelle arène tous les 300 trophées, chacune avec son décor et sa musique
+// Arènes : une nouvelle arène tous les 300 trophées, chacune avec son décor et sa musique. Elles ont toutes la même carte
+// (ponts, tours, rivière) ; id : ses images et ses animations (src/data/arenas.js, src/render/mapfx.js)
 export const ARENA_STEP = 300, ARENA_MAX = 5;
 export const ARENAS = [
-  { name: 'Savane Ardente', music: 'fight1' },
-  { name: 'Jungle Profonde', music: 'fight2' },
-  { name: 'Plage Tropicale', music: 'fight3' },
-  { name: 'Pics Glacés', music: 'fight4' },
-  { name: 'Volcan Rugissant', music: 'fight1' },
+  { id: 'arena', name: 'Île Tropicale', music: 'fight1' },
+  { id: 'bonbons', name: 'Royaume Sucré', music: 'fight2' },
+  { id: 'desert', name: 'Canyon Brûlant', music: 'fight3' },
+  { id: 'volcan', name: 'Volcan Rugissant', music: 'fight4' },
+  { id: 'royal', name: 'Palais Royal', music: 'fight1' },
 ];
 export const arenaOf = (trophies) => Math.min(ARENA_MAX, Math.floor(trophies / ARENA_STEP) + 1);
 export const arenaRange = (arena) => arena >= ARENA_MAX ? [(arena - 1) * ARENA_STEP, null] : [(arena - 1) * ARENA_STEP, arena * ARENA_STEP - 1];

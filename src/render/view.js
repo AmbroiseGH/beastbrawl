@@ -8,6 +8,7 @@ import { clamp, rand } from '../core/utils.js';
 import { handOf, nextOf, deployZones, DEPLOY_DELAY, TILE, WS, CATA, goldAir } from '../game/rt.js';
 import { ANIMALS } from '../data/animals.js';
 import { MAP_W, MAP_H, MAP_K, PROPS, GW, GH, BRIDGES } from '../data/map.js';
+import { ARENA_MAPS } from '../data/arenas.js';
 import { GRID, swimHome } from '../game/nav.js';
 import { MapFx } from './mapfx.js';
 
@@ -129,7 +130,8 @@ const DROP_T = 0.22, DROP_H = 260;            // un animal posé tombe du ciel e
 
 const ellipse = (c, x, y, rx, ry) => { c.beginPath(); c.ellipse(x, y, rx, ry, 0, 0, 6.3); };
 const TEAM = ['#39a9ff', '#ff5a4a'], TEAM_LITE = ['#bfe6ff', '#ffd0c4'];
-const AMBIENT = [null, '#fff0dc', '#e4f6dc', null, '#dbe9ff', '#ffd9cb'];      // teinte de l'air selon l'arène
+// teinte de l'air selon l'arène : Île Tropicale, Royaume Sucré, Canyon Brûlant, Volcan Rugissant, Palais Royal
+const AMBIENT = [null, '#fff0dc', '#fff4fa', '#ffeedd', '#ffe2d6', '#f8f4ff'];
 // le milieu de chaque tente (fumée, flammes) et la hauteur de sa barre de vie
 const TENT_MID = [{ x: 512, y: 1326 }, { x: 512, y: 158 }], CAMP_BAR = [1424, 178];
 // les tours : centre de la cage et de son anneau (le singe libéré s'y tient), bas de la tour (ordre d'affichage)
@@ -177,7 +179,7 @@ export class View {
     this.cv = canvas; this.ctx = canvas.getContext('2d'); this.k = 1;
     this.parts = []; this.texts = []; this.decals = []; this.dots = []; this.vis = new Map(); this.svis = new Map();
     this.shake = 0; this.time = 0; this.flash = 0; this.flashColor = '255,255,255'; this.banners = [];
-    this.hand = [{}, {}, {}, {}]; this.auraN = -1; this.mapfx = new MapFx(); this.zoneCv = {};
+    this.hand = [{}, {}, {}, {}]; this.auraN = -1; this.mapfx = new MapFx(); this.liq = this.mapfx.th; this.zoneCv = {};
     this.cam = { x: MAP_W / 2, y: MAP_H, z: ZOOM.min }; this.camT = null; this.cpulse = [0, 0]; this.chp = null; this.pings = []; this.ripples = [];
   }
   // ronds dans l'eau (nageurs, plongeons)
@@ -189,7 +191,8 @@ export class View {
   }
   reset(arena) {
     this.parts.length = 0; this.texts.length = 0; this.decals.length = 0; this.dots.length = 0; this.vis.clear(); this.svis.clear(); this.shake = 0; this.flash = 0; this.banners.length = 0;
-    this.arena = arena; this.hand = [{}, {}, {}, {}]; this.auraN = -1; this.mapfx.reset(); this.cpulse = [0, 0]; this.chp = null;
+    this.arena = arena; this.A = ARENA_MAPS[arena - 1] || ARENA_MAPS[0]; this.zoneCv = {};      // (les décors en relief changent les zones de pose)
+    this.hand = [{}, {}, {}, {}]; this.auraN = -1; this.mapfx.reset(this.A); this.liq = this.mapfx.th; this.cpulse = [0, 0]; this.chp = null;
     this.cam = this.clampCam({ x: MAP_W / 2, y: MAP_H, z: ZOOM.min }); this.camT = null; this.pings = []; this.ripples = [];
   }
   // signal sur la mini-carte (tour prise, boîte cassée, animal tombé hors de l'écran)
@@ -305,13 +308,14 @@ export class View {
     for (const t of b.towers) list.push({ y: TOWER.base, s: t });
     for (const cp of b.catas) { const m = this.monkeyAt(cp, dt); list.push({ y: cp.y, cata: cp }, { y: m.y + 0.5, monkey: cp }); }
     list.push({ y: 2000, tent: 1 });
+    if (this.A) for (const d of this.A.decor) list.push({ y: d.foot[1], deco: d.prop });          // souches, petits volcans
     for (const cp of b.camps) list.push({ y: cp.side === 0 ? 2001 : 130, camp: cp });      // l'éclat de la tente bleue passe par-dessus son image
     const G = b.gold;
     if (G && G.box && !G.box.dead) list.push({ y: G.box.y + 4, gold: G.box });
     if (G) for (const m of G.monkeys) if (!m.gone) list.push({ y: m.py + (m.y - m.py) * a + (goldAir(m) ? 60 : 0), gm: m });
     list.sort((p, q) => p.y - q.y);
     for (const it of list) {
-      if (it.u) this.drawUnit(it.u, dt, a, b, ui); else if (it.tent) this.prop('tentB'); else if (it.camp) this.drawCamp(it.camp, dt, b);
+      if (it.u) this.drawUnit(it.u, dt, a, b, ui); else if (it.tent) this.prop('tentB'); else if (it.deco) { this.prop(it.deco); this.mapfx.decoGlow(c, this.A.props[it.deco]); } else if (it.camp) this.drawCamp(it.camp, dt, b);
       else if (it.cata) this.drawCata(it.cata, dt, b, ui); else if (it.monkey) this.drawMonkey(it.monkey, b);
       else if (it.gold) this.drawGoldBox(it.gold, dt, ui); else if (it.gm) this.drawGoldMonkey(it.gm, dt, a);
       else this.drawStruct(it.s, dt, b, ui);
@@ -354,7 +358,7 @@ export class View {
   }
   // Un élément détouré de la carte (boîte, cage, tour, tente), à sa place d'origine (+ décalage), agrandi autour de son pied
   prop(name, dx = 0, dy = 0, alpha = 1, sc = 1, add = false) {
-    const p = PROPS[name], im = IMG.props, c = this.ctx; if (!p || !im || !im.width) return;
+    const p = PROPS[name] || (this.A && this.A.props[name]), im = IMG.props, c = this.ctx; if (!p || !im || !im.width) return;
     const w = p[2] / MAP_K, h = p[3] / MAP_K, x = p[4] + dx, y = p[5] + dy;
     c.globalAlpha = alpha; if (add) c.globalCompositeOperation = 'lighter';
     if (sc !== 1) c.drawImage(im, p[0], p[1], p[2], p[3], x + w / 2 - w * sc / 2, y + h - h * sc, w * sc, h * sc);
@@ -400,7 +404,7 @@ export class View {
       const r = this.ripples[i]; r.age += dt; if (r.age >= r.life) { this.ripples.splice(i, 1); continue; }
       const q = r.age / r.life, rad = r.r * (0.45 + 1.1 * q), under = nearDeck(r.x, r.y, rad + 4);
       if (under) { c.save(); this.clipDecks(); }
-      c.lineWidth = 2.6 * (1 - q) + 0.6; c.strokeStyle = `rgba(235,250,255,${r.a * (1 - q)})`; ellipse(c, r.x, r.y, rad, rad * 0.42); c.stroke();
+      c.lineWidth = 2.6 * (1 - q) + 0.6; c.strokeStyle = `rgba(${this.liq.ring},${r.a * (1 - q)})`; ellipse(c, r.x, r.y, rad, rad * 0.42); c.stroke();
       if (under) c.restore();
     }
   }
@@ -519,12 +523,19 @@ export class View {
     // tour latérale : le corps, puis la cage (tant qu'elle n'est à personne) ou le singe libéré derrière sa rambarde
     const L = s.lane, cx = TOWER[L], m = L === 'L' ? 1 : -1;
     this.prop('tower' + L);
-    if (s.side >= 0) {      // la bannière blanche prend la couleur du camp
-      c.save(); c.globalCompositeOperation = 'multiply'; c.fillStyle = s.side === 0 ? '#63b4ff' : '#ff7868';
-      c.beginPath(); c.moveTo(cx - 30 * m, 732); c.lineTo(cx + 30 * m, 732); c.lineTo(cx + 30 * m, 812); c.lineTo(cx, 838); c.lineTo(cx - 30 * m, 812); c.closePath(); c.fill(); c.restore();
-    }
     if (v.side !== s.side) { v.side = s.side; v.pop = 0; }
     v.pop = Math.min(1, v.pop + dt * 2.2);
+    if (s.side >= 0) {      // la bannière prend la couleur du camp : son drapeau (tissu bleu ou rouge, patte dorée) se déroule
+      const fl = 'flag' + L + s.side;
+      if (this.A && this.A.props[fl]) {
+        const k = Math.min(1, v.pop * 1.6);
+        if (k >= 1) this.prop(fl);
+        else { const p = this.A.props[fl], fw = p[2] / MAP_K, fh = p[3] / MAP_K; c.save(); c.beginPath(); c.rect(p[4] - 2, p[5], fw + 4, fh * k); c.clip(); this.prop(fl); c.restore(); }
+      } else {
+        c.save(); c.globalCompositeOperation = 'multiply'; c.fillStyle = s.side === 0 ? '#63b4ff' : '#ff7868';
+        c.beginPath(); c.moveTo(cx - 30 * m, 732); c.lineTo(cx + 30 * m, 732); c.lineTo(cx + 30 * m, 812); c.lineTo(cx, 838); c.lineTo(cx - 30 * m, 812); c.closePath(); c.fill(); c.restore();
+      }
+    }
     if (s.side < 0) {
       this.prop('cage' + L, jx, v.flash > 0.4 ? rand(-0.8, 0.8) : 0);
       if (v.flash > 0.02 || glow) this.prop('cage' + L, jx, 0, Math.min(1, v.flash * 0.45 + glow), 1, true);
@@ -749,10 +760,10 @@ export class View {
       const was = v.sk === undefined ? sink : v.sk;
       if (was < 0.45 && sink >= 0.45) {
         this.ripple(x, y + 2, 30, 0.8, 0.75); this.ripple(x, y + 2, 46, 1.1, 0.5);
-        for (let i = 0; i < 6; i++) this.dot(x + rand(-0.6, 0.6) * u.r, y - 2, { vx: rand(-25, 25), vy: -rand(40, 80), g: 300, r: rand(1, 1.8), col: '220,245,255', life: 0.45 });
+        for (let i = 0; i < 6; i++) this.dot(x + rand(-0.6, 0.6) * u.r, y - 2, { vx: rand(-25, 25), vy: -rand(40, 80), g: 300, r: rand(1, 1.8), col: this.liq.bubble, life: 0.45 });
       } else if (was > 0.85 && sink <= 0.85) {
         this.ripple(x, y + 2, 34, 0.9, 0.8); this.ripple(x, y + 2, 52, 1.2, 0.5);
-        for (let i = 0; i < 10; i++) { const an = rand(0, 6.283); this.dot(x + Math.cos(an) * u.r * 0.5, y - 4, { vx: Math.cos(an) * rand(20, 55), vy: -rand(60, 120), g: 320, r: rand(1.1, 2), col: '220,245,255', life: 0.6 }); }
+        for (let i = 0; i < 10; i++) { const an = rand(0, 6.283); this.dot(x + Math.cos(an) * u.r * 0.5, y - 4, { vx: Math.cos(an) * rand(20, 55), vy: -rand(60, 120), g: 320, r: rand(1.1, 2), col: this.liq.bubble, life: 0.6 }); }
       }
       v.sk = sink;
     }
@@ -781,7 +792,7 @@ export class View {
     if (v.ready > 0 && v.ready < 2) v.ready += dt * 3.2;
     if (u.dead && swim) {        // un nageur vaincu coule, dans un remous de bulles
       const t = u.deadT; if (t > 0.8) return; const k = t / 0.8; alpha = 1 - k; oy += 22 * k; sy *= 1 - 0.3 * k; shadowK = 0;
-      if (Math.random() < 0.5) this.dot(x + rand(-u.r, u.r), y - rand(0, 6), { vy: -rand(20, 50), r: rand(1, 2), col: '220,245,255', life: 0.5 });
+      if (Math.random() < 0.5) this.dot(x + rand(-u.r, u.r), y - rand(0, 6), { vy: -rand(20, 50), r: rand(1, 2), col: this.liq.bubble, life: 0.5 });
       if (!v.sank) { v.sank = true; this.ripple(x, y + 2, 32, 1.1, 0.8); this.ripple(x, y + 2, 46, 1.4, 0.6); }
     } else if (u.dead) { const t = u.deadT; if (t > 0.42) return; const k = t / 0.42; alpha = 1 - k * k; sy *= 1 + 0.18 * Math.sin(k * Math.PI) - 0.35 * k; sx *= 1 + 0.22 * Math.sin(k * Math.PI) - 0.2 * k; oy -= 26 * k; shadowK = 1 - k; }
     // direction : une petite inertie évite que l'animal tremble entre deux orientations voisines
@@ -809,7 +820,7 @@ export class View {
       if (u.stun > 0) { ox = Math.sin(this.time * 30) * 2.5; rot += Math.sin(this.time * 9) * 0.05; }
       v.rip = (v.rip || 0) - dt;
       if (v.rip <= 0) { v.rip = mv ? 0.28 : 0.85; this.ripple(x - u.fx * u.r * 0.6, y + 2, u.r * (mv ? 1.1 : 1.5), mv ? 0.7 : 1.1, mv ? 0.6 : 0.4); }
-      if (mv && sink < 0.3 && Math.random() < 0.5) this.dot(x - u.fx * u.r * 0.9 + rand(-3, 3), y + rand(-1, 3), { vx: -u.fx * 18 + rand(-10, 10), vy: -u.fy * 8 - rand(0, 18), g: 90, r: rand(1, 1.8), col: '235,250,255', life: 0.45 });
+      if (mv && sink < 0.3 && Math.random() < 0.5) this.dot(x - u.fx * u.r * 0.9 + rand(-3, 3), y + rand(-1, 3), { vx: -u.fx * 18 + rand(-10, 10), vy: -u.fy * 8 - rand(0, 18), g: 90, r: rand(1, 1.8), col: this.liq.ring, life: 0.45 });
     } else if (u.moving && u.spawn <= 0) {
       v.walk += dt * (6 + u.s.speed * 3.5) * (u.charging ? 1.6 : 1) * (u.slowT > 0 ? 0.6 : 1); frame = Math.floor(v.walk) % 4;
       const ph = v.walk * Math.PI / 2, hop = Math.abs(Math.sin(ph));
@@ -829,7 +840,7 @@ export class View {
       const rw = r * (u.air ? 1.15 : swim ? 1.6 : 1.42), pulse = v.ready > 0 && v.ready < 2 ? 1 + 0.5 * Math.sin(Math.min(1, v.ready) * Math.PI) * (1 - v.ready / 2) : 1;
       c.globalAlpha = (u.air ? 0.55 : swim ? 0.6 : 0.9) * alpha * (1 - sink); c.drawImage(ring, -rw * pulse, gy - rw * 0.5 * pulse, rw * 2 * pulse, rw * pulse); c.globalAlpha = 1;
     }
-    if (swim) { c.fillStyle = `rgba(10,40,90,${0.22 * alpha * (1 - sink)})`; ellipse(c, 0, gy - 2, r * 1.25, r * 0.5); c.fill(); }
+    if (swim) { c.fillStyle = `rgba(${this.liq.deep},${0.22 * alpha * (1 - sink)})`; ellipse(c, 0, gy - 2, r * 1.25, r * 0.5); c.fill(); }
     else { const sw = r * (u.air ? 0.95 : 1.5) * shadowK, sh = sw * 0.5; c.globalAlpha = (u.air ? 0.5 : 0.95) * alpha * (0.4 + 0.6 * shadowK); c.drawImage(S.shadow, -sw + (u.air ? 10 : 3), gy - sh + (u.air ? 6 : 1), sw * 2, sh * 2); c.globalAlpha = 1; }
     // temps de pose : petit cadran qui se vide autour des pattes
     if (u.spawn > 0 && v.landed) {
@@ -871,8 +882,8 @@ export class View {
       c.restore();
       if (sink < 0.97) {      // l'écume là où le corps traverse la surface
         const fa = Math.sin(Math.min(1, sink * 1.15) * Math.PI) * alpha, fw = r * (1.05 + 0.08 * Math.sin(this.time * 9 + v.bob));
-        c.fillStyle = `rgba(235,250,255,${0.5 * fa})`; ellipse(c, 0, 3, fw, 5); c.fill();
-        c.fillStyle = `rgba(255,255,255,${0.75 * fa})`; ellipse(c, 0, 2, fw * 0.62, 2.4); c.fill();
+        c.fillStyle = `rgba(${this.liq.ring},${0.5 * fa})`; ellipse(c, 0, 3, fw, 5); c.fill();
+        c.fillStyle = `rgba(${this.liq.foam},${0.75 * fa})`; ellipse(c, 0, 2, fw * 0.62, 2.4); c.fill();
       }
     }
     c.restore();

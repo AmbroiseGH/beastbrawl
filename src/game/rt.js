@@ -13,8 +13,9 @@
 // et les sons suivent. Coordonnées : pixels de la carte verticale (1024 × 1536), y vers le bas. Rien d'aléatoire hors de b.rng.
 import { ANIMALS, statsAt, STRUCTS, levelK } from '../data/animals.js';
 import { makeRng } from '../core/rng.js';
-import { MAP_W, MAP_H, CRATES, CELL } from '../data/map.js';
-import { zoneAt, walkable, swimmable, swimHome, campWater, swimNear, nearest, findPath, los, waterNear, bridgeNear, bridgeExit, CLEAR } from './nav.js';
+import { MAP_W, MAP_H, MAP_K, CRATES, CELL } from '../data/map.js';
+import { zoneAt, walkable, swimmable, swimHome, campWater, swimNear, nearest, findPath, los, waterNear, bridgeNear, bridgeExit, CLEAR, setObstacles } from './nav.js';
+import { ARENA_MAPS } from '../data/arenas.js';
 
 export const TICK = 1 / 30;
 export const TILE = 52;                         // une case, en pixels de la carte (l'arène fait environ 15 × 21 cases)
@@ -95,11 +96,15 @@ function reachable(u, e) {
 
 // ---------- création ----------
 // decks : [[{ id, level }…], […]] ; towerLevels : niveau moyen de chaque deck ; seed : graine du combat
-export function createBattle({ decks, towerLevels = [1, 1], seed = 1 }) {
+// arena : 1 à 5 ; les décors en relief de l'arène (souches, petits volcans) bloquent le passage autour de leur pied
+export const OBSTACLE_K = 1.15;
+export const obstaclesOf = (arena) => ((ARENA_MAPS[arena - 1] || ARENA_MAPS[0]).decor || []).map((d) => [d.foot[0], d.foot[1], d.foot[2] * OBSTACLE_K, d.foot[3] * OBSTACLE_K]);
+export function createBattle({ decks, towerLevels = [1, 1], seed = 1, arena = 1 }) {
+  setObstacles(obstaclesOf(arena));
   const rng = makeRng(seed);
   const lv = [towerLevels[0] || 1, towerLevels[1] || 1], lvK = (levelK(lv[0]) + levelK(lv[1])) / 2;
   const b = { t: 0, clock: DURATION, overtime: false, double: false, over: false, winner: -1, endT: 0, why: '', mode: 'camps', camps: null, catas: null,
-    units: [], structs: [], towers: [], crates: [], projs: [], clouds: [], events: [], ents: new Map(), nextId: 1, rng, players: [], levels: lv, lvK, gold: null };
+    units: [], structs: [], towers: [], crates: [], projs: [], clouds: [], events: [], ents: new Map(), nextId: 1, rng, players: [], levels: lv, lvK, gold: null, arena };
   { const g = makeRng(seed * 7919 + 13); b.gold = { rng: g, at: GOLD.from + g() * (GOLD.to - GOLD.from), box: null, done: false, monkeys: [] }; }
   for (let s = 0; s < 2; s++) {
     const cards = decks[s].filter((c) => ANIMALS[c.id]).map((c) => ({ id: c.id, level: c.level || 1, cost: ANIMALS[c.id].cost }));
@@ -239,14 +244,15 @@ export function step(b) {
     const k = 1 + Math.min(1, behind(b, p.side) / CAMPS.aura);
     p.aura = Math.min(AURA.max, p.aura + k * dt / (AURA.every / (b.double || b.overtime ? 2 : 1)));
   }
-  for (const u of b.units) { u.px = u.x; u.py = u.y; if (u.dead) { u.deadT += dt; continue; } updateUnit(b, u, dt); if (b.over) return; }
+  // (un camp qui tombe arrête tout, mais chacun reste d'abord sur le sol : separate)
+  for (const u of b.units) { u.px = u.x; u.py = u.y; if (u.dead) { u.deadT += dt; continue; } updateUnit(b, u, dt); if (b.over) { separate(b); return; } }
   for (const t of b.towers) updateTower(b, t, dt);
-  for (const c of b.catas) { updateCata(b, c, dt); if (b.over) return; }
+  for (const c of b.catas) { updateCata(b, c, dt); if (b.over) { separate(b); return; } }
   for (const c of b.camps) c.hurtT += dt;
   for (const c of b.crates) if (c.dead) { c.respawnT -= dt; if (c.respawnT <= 0 && !b.units.some((u) => !u.dead && !u.air && !u.swim && Math.hypot((u.x - c.x) / (c.rx + u.r), (u.y - c.y) / (c.ry + u.r)) < 1)) { c.dead = false; c.hp = c.maxHp; ev(b, { type: 'crate_spawn', id: c.id, x: c.x, y: c.y }); } }
   updateGold(b, dt);
   advanceProjs(b, dt, false);
-  if (b.over) return;
+  if (b.over) { separate(b); return; }
   updateClouds(b, dt);
   separate(b);
   if (b.units.some((u) => u.dead && u.deadT > 1)) b.units = b.units.filter((u) => { if (u.dead && u.deadT > 1) { b.ents.delete(u.id); return false; } return true; });
@@ -745,13 +751,17 @@ function launch(b, c, f) {
 
 // ---------- la boîte dorée et le singe doré ----------
 // Les endroits où la boîte peut tomber, de chaque côté : du sol dégagé (ni pont, ni bord de l'eau), loin du camp, des
-// boîtes, des tours et de la route des catapultes. Calculé une fois.
-let GOLD_SPOTS = null;
-function goldSpots() {
-  if (GOLD_SPOTS) return GOLD_SPOTS;
+// boîtes, des tours et de la route des catapultes. Calculé une fois par arène (les décors en relief prennent du sol).
+const GOLD_SPOTS = {};
+function goldSpots(arena) {
+  if (GOLD_SPOTS[arena]) return GOLD_SPOTS[arena];
   const segD = (x, y, [ax, ay], [bx, by]) => { const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l)) : 0; return Math.hypot(x - ax - t * dx, y - ay - t * dy); };
   const roadD = (x, y) => { let m = Infinity; for (const R of CATA_ROAD) for (let i = 1; i < R.length; i++) m = Math.min(m, segD(x, y, R[i - 1], R[i])); return m; };
-  GOLD_SPOTS = [0, 1].map((side) => {
+  // pas derrière un décor en relief (souche, petit volcan) : la boîte (≈ 90 × 85 px au-dessus de son pied) y serait cachée ;
+  // devant, elle peut en recouvrir le bas
+  const A = ARENA_MAPS[arena - 1] || ARENA_MAPS[0];
+  const deco = (A.decor || []).map((d) => { const p = A.props[d.prop]; return [p[4] - 55, p[5] - 15, p[4] + p[2] / MAP_K + 55, d.foot[1] + d.foot[3] + 40]; });
+  return (GOLD_SPOTS[arena] = [0, 1].map((side) => {
     const out = [], y0 = side === 0 ? 848 : 397, y1 = side === 0 ? 1174 : 722, C = CAMP_POS[side];
     for (let y = y0; y <= y1; y += 16) for (let x = 60; x <= MAP_W - 60; x += 16) {
       const z = zoneAt(x, y); if (z < 1 || z > 5) continue;
@@ -759,20 +769,19 @@ function goldSpots() {
       // l'image de la boîte monte d'environ 80 px : elle ne doit cacher ni un pont ni un mur (un peu d'eau tout en haut, passe)
       let open = true;
       for (let oy = -84; oy <= -10 && open; oy += 8) for (let ox = -40; ox <= 40; ox += 10) { const z2 = zoneAt(x + ox, y + oy); if (z2 === 6 || z2 === 0 || (z2 === 7 && oy > -46)) { open = false; break; } }
-      if (!open) continue;
+      if (!open || deco.some(([x0, y0, x1, y1]) => x > x0 && x < x1 && y > y0 && y < y1)) continue;
       if (Math.hypot(x - C.x, y - C.y) < 230 || CRATES.some(([cx, cy]) => Math.hypot(x - cx, y - cy) < 100) || Object.values(TOWER_POS).some((T) => Math.hypot(x - T.x, y - T.y) < 170) || roadD(x, y) < 80) continue;
       out.push([x, y]);
     }
     return out;
-  });
-  return GOLD_SPOTS;
+  }));
 }
 function updateGold(b, dt) {
   const G = b.gold;
   if (!G.box && !G.done && b.t >= G.at) {
     let side = behind(b, 0) >= GOLD.gap ? 0 : behind(b, 1) >= GOLD.gap ? 1 : -1;
     if (side < 0 && b.overtime) side = G.rng() < 0.5 ? 0 : 1;
-    const S = side >= 0 ? goldSpots()[side] : null;
+    const S = side >= 0 ? goldSpots(b.arena)[side] : null;
     if (S && S.length) {
       const [x, y] = S[Math.floor(G.rng() * S.length)], hp = Math.round(GOLD.hp * b.lvK);
       const o = { kind: 'gold', id: b.nextId++, side: -1, for: side, x, y, rx: GOLD.rx, ry: GOLD.ry, aimX: x, aimY: y - 26, hp, maxHp: hp, dead: false, air: false };

@@ -13,6 +13,20 @@ const unrle = (rle) => {
 };
 export const GRID = unrle(GRID_RLE);
 export const SWIM = unrle(SWIM_RLE);
+// Décors en relief propres à une arène (souches du Canyon, petits volcans) : leur pied est interdit au passage.
+// list : ellipses [x, y, rx, ry] en pixels de la carte ; une liste vide rend la grille d'origine.
+const GRID0 = GRID.slice();
+export function setObstacles(list = []) {
+  GRID.set(GRID0);
+  for (const [x, y, rx, ry] of list) {
+    for (let gy = Math.max(0, Math.floor((y - ry) / CELL)); gy <= Math.min(GH - 1, Math.floor((y + ry) / CELL)); gy++) {
+      for (let gx = Math.max(0, Math.floor((x - rx) / CELL)); gx <= Math.min(GW - 1, Math.floor((x + rx) / CELL)); gx++) {
+        const dx = ((gx + 0.5) * CELL - x) / rx, dy = ((gy + 0.5) * CELL - y) / ry;
+        if (dx * dx + dy * dy <= 1 && GRID[gy * GW + gx] !== WATER) GRID[gy * GW + gx] = 0;
+      }
+    }
+  }
+}
 const okLand = (c) => { const v = GRID[c]; return v > 0 && v < WATER; };
 const ok = okLand;
 const okSwim = (c) => SWIM[c] === 1;

@@ -6,7 +6,9 @@ const store = {};
 globalThis.location = { search: '' };
 globalThis.localStorage = { getItem: (k) => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } };
 
-const { createBattle, step, deploy, handOf, summary, command, damage, deployZones, setCata, canDeploy, clampDeploy, TICK, TILE, DURATION, OVERTIME, BASE, SIEGE, CATA_ROAD, GOLD, goldAir } = await import('../src/game/rt.js');
+const { createBattle, step, deploy, handOf, summary, command, damage, deployZones, setCata, canDeploy, clampDeploy, TICK, TILE, DURATION, OVERTIME, BASE, SIEGE, CATA_ROAD, GOLD, goldAir, obstaclesOf } = await import('../src/game/rt.js');
+const { ARENAS } = await import('../src/data/economy.js');
+const { ARENA_MAPS } = await import('../src/data/arenas.js');
 const { findPath, walkable, swimmable, zoneAt, los } = await import('../src/game/nav.js');
 const { makeAI, aiStep } = await import('../src/game/ai.js');
 const { makeRng } = await import('../src/core/rng.js');
@@ -18,8 +20,8 @@ let passed = 0;
 const test = async (name, fn) => { await fn(); passed++; console.log('ok -', name); };
 
 // ---------- combat ----------
-function play(seed, d0, d1, s0 = 0.5, s1 = 0.5, onEvent = null) {
-  const b = createBattle({ decks: [d0.map((id) => ({ id, level: 1 })), d1.map((id) => ({ id, level: 1 }))], towerLevels: [1, 1], seed });
+function play(seed, d0, d1, s0 = 0.5, s1 = 0.5, onEvent = null, arena = 1) {
+  const b = createBattle({ decks: [d0.map((id) => ({ id, level: 1 })), d1.map((id) => ({ id, level: 1 }))], towerLevels: [1, 1], seed, arena });
   const r = makeRng(seed + 7), a0 = makeAI(0, s0, r), a1 = makeAI(1, s1, r);
   const log = [];
   let n = 0;
@@ -57,6 +59,38 @@ await test('un combat entre deux ordinateurs va jusqu\'au bout : les catapultes 
   }
   assert.ok(shots > 0, 'au moins un tir de catapulte depuis le centre'); assert.ok(moved > 0, 'les catapultes bougent'); assert.ok(hurt >= 5, 'les camps sont attaqués');
   assert.ok(fish > 0, 'des nageurs sont mis à l\'eau');
+});
+
+await test('les cinq arènes : même carte, drapeaux des camps, et les souches du Canyon et les petits volcans se contournent', () => {
+  assert.equal(ARENAS.length, 5); assert.equal(ARENA_MAPS.length, 5);
+  ARENAS.forEach((a, i) => {
+    const A = ARENA_MAPS[i]; assert.equal(A.id, a.id);
+    for (const s of ['L', 'R']) for (const t of [0, 1]) assert.ok(A.props['flag' + s + t], a.id + ' : drapeau ' + s + t);
+    for (const k in A.props) { const [x, y, w, h] = A.props[k]; assert.ok(x >= 0 && y >= 0 && x + w <= A.atlas[0] && y + h <= A.atlas[1], a.id + ' : ' + k + ' hors de l\'atlas'); }
+    assert.ok(A.crowd.length > 0, a.id + ' : des spectateurs');
+  });
+  for (let arena = 1; arena <= 5; arena++) {
+    const A = ARENA_MAPS[arena - 1], obs = obstaclesOf(arena);
+    assert.equal(obs.length, ['desert', 'volcan'].includes(A.id) ? 4 : 0, A.id);
+    if (!obs.length) continue;
+    createBattle({ decks: [[{ id: 'monkey', level: 1 }], [{ id: 'monkey', level: 1 }]], seed: 1, arena });
+    for (const [x, y] of obs) {
+      assert.ok(!walkable(x, y), A.id + ' : on ne marche pas sur un décor');
+      // un chemin qui passait tout droit à travers le décor le contourne
+      const p = findPath(x - 70, y, x + 70, y);
+      assert.ok(p && p.length >= 2, A.id + ' : chemin autour du décor');
+      let px = x - 70, py = y; for (const [qx, qy] of p) { assert.ok(los(px, py, qx, qy), A.id + ' : le chemin reste sur le sol'); px = qx; py = qy; }
+    }
+    // des combats complets dans cette arène : personne ne marche dans un décor (vérifié par play)
+    for (let i = 0; i < 3; i++) {
+      const deck = [...ANIMAL_IDS].sort(() => makeRng(70 + arena * 3 + i)() - 0.5);
+      const { b } = play(2000 + arena * 10 + i, deck.slice(0, 8), deck.slice(2, 10), 0.6, 0.6, null, arena);
+      assert.ok(b.over && b.arena === arena);
+    }
+  }
+  // de retour dans une arène sans décor, la grille d'origine revient
+  createBattle({ decks: [[{ id: 'monkey', level: 1 }], [{ id: 'monkey', level: 1 }]], seed: 1, arena: 1 });
+  for (const [x, y] of obstaclesOf(3)) assert.ok(walkable(x, y), 'la grille de l\'arène 1 est revenue');
 });
 
 await test('la même graine redonne exactement le même combat', () => {
