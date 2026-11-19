@@ -9,7 +9,7 @@ import { S } from '../core/save.js';
 import { chime } from '../core/audio.js';
 import { xpNeed } from '../data/economy.js';
 
-const BAR = { x: 84, y: 23, w: 160, h: 35 }, BADGE = [55, 41];     // la jauge et l'étoile du niveau, en px de scène
+const BAR = { x: 97, y: 23, w: 151, h: 37 }, BADGE = [57, 40];     // la jauge et l'étoile du niveau, en px de scène
 const FROM = [470, 760];                                             // départ des étoiles quand on ne le précise pas
 
 let shown = null;            // ce que la jauge affiche : { level, xp }
@@ -100,7 +100,7 @@ function animate(gain, src) {
     // la copie de la jauge, au-dessus des fenêtres
     const fill = h('div', { class: 'tb-xpfill' }), lvl = h('div', { class: 'tb-lvl t' }), txt = h('div', { class: 'tb-xptxt t' });
     const glow = h('div', { class: 'xp-glow' }), tip = h('div', { class: 'xp-tip' });
-    const hud = h('div', { class: 'xp-hud' }, glow, h('img', { class: 'xp-art', src: 'assets/ui/xp_hud.webp', alt: '' }), h('div', { class: 'tb-xp' }, fill), tip, lvl, txt);
+    const hud = h('div', { class: 'xp-hud' }, glow, h('img', { class: 'xp-art', src: 'assets/ui/xp_hud.webp?v=2', alt: '' }), h('div', { class: 'tb-xp' }, fill), tip, lvl, txt);
     const plus = h('div', { class: 'xp-plus t' }, '+' + fmt(gain), h('span', { class: 'ico xp' }));
     const clone = { lvl, fill, txt }, made = [];
     let level = shown.level, cur = t0, goal = t0, arrived = 0, pause = 0, endAt = 0, raf = 0, last = performance.now(), labelEl = null, over = false;

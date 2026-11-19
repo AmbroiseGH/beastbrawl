@@ -43,7 +43,7 @@ export function toast(html) {
 }
 
 // Fait voler n icônes d'un point vers un compteur. kind : 'coin' | 'paw' | 'ruby' | 'xp' | 'trophy'
-const ICON = { coin: 'cur_coin', paw: 'cur_paw', ruby: 'cur_ruby', xp: 'xp_star', trophy: 'ic_trophy', star: 'ic_star' };
+const ICON = { coin: 'cur_coin', paw: 'cur_paw', ruby: 'cur_ruby', xp: 'xp_star', trophy: 'ic_trophy2', star: 'ic_star' };
 export const TARGET = { coin: [354, 40], paw: [606, 40], ruby: [818, 40], xp: [58, 40], trophy: [600, 144] };
 export async function fly(kind, from, to, n = 8, onArrive) {
   const layer = $('fly'); to = to || TARGET[kind];

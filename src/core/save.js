@@ -1,5 +1,6 @@
 // La sauvegarde du joueur (dans le navigateur). Toute la progression est ici.
 import { uid } from './utils.js';
+import { CHESTS, OLD_CHEST } from '../data/cards.js';
 
 const KEY = 'beastbrawl.v1';     // même clé qu'avant la mise à jour : l'ancienne progression est reprise (voir migrate)
 const fresh = () => ({
@@ -7,7 +8,7 @@ const fresh = () => ({
   level: 1, xp: 0, coins: 1000, paws: 0, rubies: 100, trophies: 0, best: 0,
   cards: { monkey: { level: 1, count: 0 } },     // animaux débloqués : niveau et cartes en réserve
   deck: ['monkey'],                              // les cartes emmenées au combat (8 au plus)
-  chests: [null, null, null, null],              // les 4 emplacements de cages : { tier, start, end } ; start = 0 tant qu'elle n'est pas lancée
+  chests: [null, null, null, null],              // les 4 emplacements de coffres : { tier, start, end } ; start = 0 tant qu'il n'est pas lancé
   chestCycle: 0, welcome: false, seen: {},       // seen : animaux déjà vus (pour « Nouveau ! »)
   shop: { day: '', bought: {} },
   wins: 0, losses: 0, draws: 0, streak: 0, lossRun: 0, bestStreak: 0, kos: 0, crowns: 0, fights: 0, cataFights: 0, upgrades: 0, opened: 0,
@@ -41,6 +42,7 @@ export function load() {
     else localStorage.setItem(KEY, JSON.stringify(S));      // première visite : on garde tout de suite l'identifiant du joueur
   } catch (e) { console.warn('sauvegarde illisible, nouvelle partie', e); S = fresh(); }
   if (!Array.isArray(S.chests) || S.chests.length !== 4) S.chests = [null, null, null, null];
+  S.chests = S.chests.map((c) => (c && !CHESTS[c.tier] ? { ...c, tier: OLD_CHEST[c.tier] || 'rustique' } : c));   // anciennes cages → coffres
   return S;
 }
 let timer = 0;

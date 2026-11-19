@@ -60,12 +60,12 @@ export const DAILY_QUESTS = [
   { id: 'crowns6', text: 'Gagne 6 couronnes', stat: 'crowns', goal: 6, reward: { rubies: 10, xp: 50 } },
   { id: 'streak2', text: 'Gagne 2 combats de suite', stat: 'streakMax', goal: 2, reward: { coins: 1000, rubies: 5, xp: 60 } },
   { id: 'up1', text: 'Améliore un animal', stat: 'upgrades', goal: 1, reward: { coins: 1000, xp: 30 } },
-  { id: 'chest2', text: 'Ouvre 2 cages', stat: 'chests', goal: 2, reward: { coins: 600, rubies: 5, xp: 30 } },
+  { id: 'chest2', text: 'Ouvre 2 coffres', stat: 'chests', goal: 2, reward: { coins: 600, rubies: 5, xp: 30 } },
   { id: 'aura60', text: 'Dépense 60 d\'Aura', stat: 'aura', goal: 60, reward: { coins: 800, paws: 10, xp: 40 } },
 ];
 export const STARTER_QUESTS = [
   { id: 's_win', text: 'Remporte ta première victoire', stat: 'wins', goal: 1, reward: { coins: 1000, rubies: 10 } },
-  { id: 's_chest', text: 'Ouvre ta première cage', stat: 'chests', goal: 1, reward: { coins: 500, rubies: 10 } },
+  { id: 's_chest', text: 'Ouvre ton premier coffre', stat: 'chests', goal: 1, reward: { coins: 500, rubies: 10 } },
   { id: 's_up', text: 'Améliore un animal au niveau 2', check: (S) => Object.values(S.cards || {}).some((c) => c.level >= 2), reward: { coins: 1000, paws: 20 } },
   { id: 's_3crowns', text: 'Gagne un combat avec 3 couronnes', stat: 'threeCrowns', goal: 1, reward: { coins: 2000, rubies: 15 } },
   { id: 's_six', text: 'Possède 6 animaux différents', check: (S) => Object.keys(S.cards || {}).length >= 6, reward: { rubies: 30 } },

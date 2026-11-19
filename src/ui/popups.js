@@ -16,6 +16,7 @@ import { friendsPopup } from './social.js';
 import { openChestAnim } from './chest.js';
 import { runTutorial, offerTutorial } from './tuto.js';
 import { Net } from '../online/net.js';
+import { chestIcon } from '../core/assets.js';
 
 // Montre des gains : les icônes volent vers les compteurs du haut (l'XP : étoiles violettes et jauge animée, voir xpbar.js)
 export function showGain(r, from = [470, 836]) {
@@ -81,7 +82,7 @@ export function statsPopup() {
   const st = (l, v) => h('div', { class: 'stat t xs' }, l, h('b', null, v));
   const rate = S.fights ? Math.round(S.wins / S.fights * 100) + ' %' : '-';
   modal({ title: 'Succès', color: 'yellow', body: [h('div', { class: 'stats' }, st('Combats', fmt(S.fights)), st('Victoires', fmt(S.wins)), st('Taux de victoire', rate), st('Meilleure série', fmt(S.bestStreak)),
-    st('Animaux K.-O.', fmt(S.kos)), st('Couronnes', fmt(S.crowns)), st('Record de trophées', fmt(S.best)), st('Améliorations', fmt(S.upgrades)), st('Cages ouvertes', fmt(S.opened)), st('Animaux', Object.keys(S.cards).length + ' / ' + ANIMAL_IDS.length))] });
+    st('Animaux K.-O.', fmt(S.kos)), st('Couronnes', fmt(S.crowns)), st('Record de trophées', fmt(S.best)), st('Améliorations', fmt(S.upgrades)), st('Coffres ouverts', fmt(S.opened)), st('Animaux', Object.keys(S.cards).length + ' / ' + ANIMAL_IDS.length))] });
 }
 
 // ---------- paramètres ----------
@@ -101,7 +102,7 @@ export function howTo() {
     p('2. Tes animaux foncent vers le camp adverse. <b>Détruis-le pour gagner tout de suite</b> ; sinon, le camp le moins abîmé gagne à la fin. Le camp le plus abîmé reçoit un coup de pouce : plus d\'Aura, et sa catapulte tire et se répare plus vite.'),
     p('3. Ta <span style="color:var(--gold)">catapulte</span> garde ton camp. Touche le bouton <b>Catapulte</b> : le singe la pousse au centre, d\'où elle lance un rocher sur le camp adverse. Cassée, il la répare.'),
     p('4. <b>Siffler</b> rappelle tes animaux à ta tente pour se soigner. <b>Attaquer</b> : touche ensuite un endroit, une boîte, une tour, la catapulte ou un animal, et tes animaux foncent dessus. Une tour prise : son singe lance des pierres pour toi.'),
-    p('5. Les victoires rapportent des cages. Ouvre-les pour trouver de nouveaux animaux et des cartes pour les améliorer dans la Collection.', 'small')], buttons: [{ label: 'Compris !', color: 'green' }] });
+    p('5. Les victoires rapportent des coffres. Ouvre-les pour trouver de nouveaux animaux et des cartes pour les améliorer dans la Collection.', 'small')], buttons: [{ label: 'Compris !', color: 'green' }] });
 }
 
 // ---------- profil ----------
@@ -116,8 +117,8 @@ export function profilePopup() {
 // ---------- boutons « + » ----------
 export function exchangePopup(kind) {
   if (kind === 'rubies') {
-    modal({ title: 'Gemmes', color: 'red', body: [p('Les gemmes se gagnent en jouant :'), p('• 1 gemme par victoire à 3 couronnes<br>• 5 gemmes pour la première victoire du jour<br>• les quêtes, le cadeau du jour, chaque niveau gagné et les grandes cages', 'small'),
-      p('Elles ouvrent les cages tout de suite, achètent des cages dans la boutique, et s\'échangent contre des pièces ou des pattes avec les boutons «&nbsp;+&nbsp;».', 'small')], buttons: [{ label: 'Voir les quêtes', color: 'purple', onclick: questsPopup }] });
+    modal({ title: 'Gemmes', color: 'red', body: [p('Les gemmes se gagnent en jouant :'), p('• 1 gemme par victoire à 3 couronnes<br>• 5 gemmes pour la première victoire du jour<br>• les quêtes, le cadeau du jour, chaque niveau gagné et les grands coffres', 'small'),
+      p('Elles ouvrent les coffres tout de suite, achètent des coffres dans la boutique, et s\'échangent contre des pièces ou des pattes avec les boutons «&nbsp;+&nbsp;».', 'small')], buttons: [{ label: 'Voir les quêtes', color: 'purple', onclick: questsPopup }] });
     return;
   }
   const isC = kind === 'coins', ico = isC ? 'coin' : 'paw';
@@ -151,8 +152,8 @@ export async function firstVisit() {
   }
   if (!S.welcome && S.tuto && S.tuto.started && !S.tuto.chest) { await runTutorial(); return; }      // tutoriel pas fini la dernière fois
   if (!S.welcome) {      // joueurs de la version 1 : une cage pour découvrir les nouveaux animaux
-    await new Promise((res) => modal({ title: 'Mise à jour !', color: 'yellow', closable: false, body: [h('img', { class: 'wel-cage pulse', src: 'assets/chests/icon_sauvage.webp', alt: '' }),
-      p('Beast Brawl passe aux combats en temps réel, avec des cartes et des cages. Voici une cage pour fêter ça !')],
+    await new Promise((res) => modal({ title: 'Mise à jour !', color: 'yellow', closable: false, body: [h('img', { class: 'wel-cage pulse', src: chestIcon('sauvage'), alt: '' }),
+      p('Beast Brawl passe aux combats en temps réel, avec des cartes et des coffres. Voici un coffre pour fêter ça !')],
     buttons: [{ label: 'Ouvrir !', color: 'green' }], onClose: res }));
     await openChestAnim(welcomeChest());
     render();

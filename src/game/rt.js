@@ -22,10 +22,10 @@ export const WS = 1.06;                         // taille des animaux : pixels d
 export const DURATION = 180, OVERTIME = 60, DOUBLE_AT = 60;
 export const AURA = { start: 5, max: 10, every: 2.8 };
 export const DEPLOY_DELAY = 1;                  // temps d'arrivée d'un animal posé (s)
-export const BASE = [{ x: 512, y: 1212 }, { x: 512, y: 320 }];     // point de ralliement devant chaque tente
+export const BASE = [{ x: 512, y: 1237 }, { x: 512, y: 330 }];     // point de ralliement devant chaque tente
 export const HOME_ZONE = [2, 1];                // zone de pose de chaque camp (voir la grille de src/data/map.js)
 const SIDE_ZONE = { L: 3, R: 4 };
-const TOWER_POS = { L: { x: 81, y: 727, topY: 652 }, R: { x: 943, y: 727, topY: 652 } };
+const TOWER_POS = { L: { x: 81, y: 747, topY: 672 }, R: { x: 943, y: 747, topY: 672 } };
 export const AIR_H = 56;                        // hauteur de vol
 const REGEN = { r: 3, rate: 0.06, calm: 2 };     // près de sa tente (dans l'eau de son camp pour un nageur), un animal au calme récupère
 const HOLD_LEASH = 2.6;                         // un animal posté ne poursuit pas plus loin (cases)
@@ -36,14 +36,14 @@ export const CAMPS = {
   aura: 80,                                     // retard (points) qui fait recharger l'Aura deux fois plus vite (+50 % à mi-chemin)
 };
 // centre du camp (ellipse rx × ry), point visé par les coups, haut de la tente
-export const CAMP_POS = [{ x: 512, y: 1330, rx: 128, ry: 52, aimY: 1306, topY: 1262 }, { x: 512, y: 196, rx: 132, ry: 54, aimY: 214, topY: 120 }];
+export const CAMP_POS = [{ x: 512, y: 1357, rx: 129, ry: 53, aimY: 1332, topY: 1287 }, { x: 512, y: 204, rx: 133, ry: 55, aimY: 223, topY: 127 }];
 // Les nageurs attaquent un camp depuis ces deux points d'eau (le bout de la rivière, de chaque côté du camp)
-export const SIEGE = [[[316, 1316], [708, 1316]], [[340, 212], [684, 212]]];
+export const SIEGE = [[[334, 1376], [690, 1376]], [[339, 221], [685, 221]]];
 // Les catapultes : la route que le singe leur fait suivre, du camp (premier point) au centre (dernier point). Au centre,
 // la bleue se place un peu à gauche, tournée vers le camp rouge, et la rouge un peu à droite, tournée vers le camp bleu.
 export const CATA_ROAD = [
-  [[440, 1228], [478, 1180], [504, 1132], [512, 1082], [512, 996], [498, 948], [462, 902]],
-  [[584, 306], [546, 354], [520, 404], [512, 456], [512, 540], [526, 588], [562, 634]],
+  [[440, 1253], [478, 1204], [504, 1155], [512, 1105], [512, 1017], [498, 968], [462, 922]],
+  [[584, 316], [546, 365], [520, 416], [512, 469], [512, 554], [526, 603], [562, 649]],
 ];
 export const CATA = {
   hp: 1800,                                     // vie (fois le niveau des decks)
@@ -340,7 +340,7 @@ function goal(b, u) {
 function wounded(b, u, reach) {
   let best = null, bs = 0.93;
   for (const e of b.units) {
-    if (e.dead || e.side !== u.side || e === u || e.spawn > 0) continue;
+    if (e.dead || e.side !== u.side || e === u || e.spawn > 0 || e.s.healer) continue;       // un chaton ne soigne pas un autre chaton
     const r = e.hp / e.maxHp; if (r >= bs || edge(u, e) > reach) continue;
     bs = r; best = e;
   }
@@ -501,13 +501,21 @@ function impact(b, info, tgt, x, y) {
   }
   if (a.cloud) { b.clouds.push({ side: info.side, x, y, r: a.cloud.r * TILE, dps: a.cloud.dps * (info.k || 1), linger: a.cloud.linger, t: a.cloud.dur, acc: 0, T: a.cloud.dur }); ev(b, { type: 'cloud', x, y, r: a.cloud.r * TILE }); }
 }
+// Bouclier câlin : pas sur les chatons eux-mêmes, et un même allié n'en reçoit pas d'autre avant « every » secondes
+// (plusieurs chatons ne le gardent pas protégé en permanence)
 function shieldAround(b, u, sh) {
   const amount = Math.round(sh.amount * u.s.k); let n = 0;
-  for (const e of b.units) if (!e.dead && e.side === u.side && e.spawn <= 0 && Math.hypot(e.x - u.x, e.y - u.y) - e.r < sh.r * TILE) { e.shield = Math.max(e.shield, amount); e.shieldMax = amount; e.shieldT = sh.dur; n++; ev(b, { type: 'shield', uid: e.id, x: e.x, y: e.y }); }
+  for (const e of b.units) {
+    if (e.dead || e.side !== u.side || e.spawn > 0 || e.s.healer || (e.shieldNext || 0) > b.t || Math.hypot(e.x - u.x, e.y - u.y) - e.r >= sh.r * TILE) continue;
+    e.shield = Math.max(e.shield, amount); e.shieldMax = amount; e.shieldT = sh.dur; e.shieldNext = b.t + (sh.every || 0); n++; ev(b, { type: 'shield', uid: e.id, x: e.x, y: e.y });
+  }
   ev(b, { type: 'shieldwave', uid: u.id, x: u.x, y: u.y, r: sh.r * TILE, n });
 }
-function heal(b, e, amount) {
+// soin d'un allié. kiss : bisou de chaton ; un deuxième bisou dans la même seconde ne soigne qu'à moitié (plusieurs chatons
+// sur le même animal ne le rendent pas immortel)
+function heal(b, e, amount, kiss = false) {
   if (e.dead || e.hp >= e.maxHp) return;
+  if (kiss) { if ((e.kissT || -9) > b.t - 1) amount *= 0.5; e.kissT = b.t; }
   const got = Math.min(e.maxHp - e.hp, amount); e.hp += got;
   ev(b, { type: 'heal', uid: e.id, amount: Math.round(got), x: e.x, y: e.y });
 }
@@ -657,7 +665,7 @@ export function roadAt(side, pos) {
   }
   return { x: R[0][0], y: R[0][1], dx: 0, dy: -1 };
 }
-const OWN_HALF = (side, y) => (side === 0 ? y > 768 : y < 768);
+const OWN_HALF = (side, y) => (side === 0 ? y > 785 : y < 785);
 function updateCata(b, c, dt) {
   if (c.fire) {                                   // un tir en cours : le bras se tend, le projectile part, le bras revient
     const f = c.fire; f.t += dt;
@@ -744,7 +752,7 @@ function goldSpots() {
   const segD = (x, y, [ax, ay], [bx, by]) => { const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l)) : 0; return Math.hypot(x - ax - t * dx, y - ay - t * dy); };
   const roadD = (x, y) => { let m = Infinity; for (const R of CATA_ROAD) for (let i = 1; i < R.length; i++) m = Math.min(m, segD(x, y, R[i - 1], R[i])); return m; };
   GOLD_SPOTS = [0, 1].map((side) => {
-    const out = [], y0 = side === 0 ? 830 : 386, y1 = side === 0 ? 1150 : 706, C = CAMP_POS[side];
+    const out = [], y0 = side === 0 ? 848 : 397, y1 = side === 0 ? 1174 : 722, C = CAMP_POS[side];
     for (let y = y0; y <= y1; y += 16) for (let x = 60; x <= MAP_W - 60; x += 16) {
       const z = zoneAt(x, y); if (z < 1 || z > 5) continue;
       if (![[0, 0], [-44, 0], [44, 0], [0, -34], [0, 34], [-30, 24], [30, 24], [-30, -24], [30, -24]].every(([ox, oy]) => walkable(x + ox, y + oy) && zoneAt(x + ox, y + oy) !== 6)) continue;
@@ -865,7 +873,7 @@ function advanceProjs(b, dt, frozen) {
 function land(b, p, tg) {
   const live = tg && !tg.dead;
   ev(b, { type: 'land', key: p.key, x: p.tx, y: p.ty, splash: !!p.info.a.splash, tower: !!p.info.tower, heal: !!p.info.heal, side: p.side, cata: !!p.info.catapult, def: !!p.info.cata, swim: !!(live && tg.swim) });
-  if (p.info.heal) { if (live && tg.side === p.side) heal(b, tg, p.info.heal); return; }
+  if (p.info.heal) { if (live && tg.side === p.side) heal(b, tg, p.info.heal, !p.info.gold); return; }
   if (p.info.a.splash) { const G = live && groundAt(tg, p.g0x, p.g0y); impact(b, p.info, live && Math.hypot(G.x - p.gtx, G.y - p.gty) < (tg.r || 26) + 30 ? tg : null, p.gtx, p.gty); }
   else if (live) impact(b, p.info, tg, p.gtx, p.gty);
 }
@@ -907,7 +915,7 @@ function separate(b) {
   for (const u of us) {
     if (u.dead) continue;
     if (u.air) {      // les volants restent au-dessus de l'arène
-      const q = Math.hypot((u.x - 512) / 470, (u.y - 768) / 700); if (q > 1) { u.x = 512 + (u.x - 512) / q; u.y = 768 + (u.y - 768) / q; }
+      const q = Math.hypot((u.x - 512) / 472, (u.y - 785) / 711); if (q > 1) { u.x = 512 + (u.x - 512) / q; u.y = 785 + (u.y - 785) / q; }
       continue;
     }
     const ok = u.swim ? swimmable : walkable;

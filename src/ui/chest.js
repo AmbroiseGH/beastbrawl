@@ -1,5 +1,5 @@
-// Ouverture d'une cage : la cage tombe sur son socle, s'impatiente, tremble puis s'ouvre dans un éclair ; chaque
-// pile de cartes s'envole de la cage, se fait attendre selon sa rareté, pivote en vraie 3D et se révèle.
+// Ouverture d'un coffre : le coffre tombe sur son socle, s'impatiente, tremble (son cadenas se fend) puis s'ouvre dans un
+// éclair ; chaque pile de cartes s'envole du coffre, se fait attendre selon sa rareté, pivote en vraie 3D et se révèle.
 // Tout est dessiné sur un canvas plein écran (décor, rayons et lueurs calculés, pas d'images de fond) ;
 // un toucher fait avancer la scène.
 import { $, h, clamp, rand, wait, TEST } from '../core/utils.js';
@@ -11,9 +11,9 @@ import { view as stageView } from './stage.js';
 import { drawText, label, rr } from '../render/view.js';
 
 const W = 941, H = 1672, CX = 470;
-const BIG = { x: CX, y: 1180, s: 1 };        // la cage au centre (y : là où elle touche le sol)
-const SMALL = { x: CX, y: 1556, s: 0.5 };     // la cage rangée en bas pendant les cartes
-const CHW = 600;                             // largeur d'une image de cage en grand
+const BIG = { x: CX, y: 1180, s: 1 };        // le coffre au centre (y : là où il touche le sol)
+const SMALL = { x: CX, y: 1556, s: 0.5 };     // le coffre rangé en bas pendant les cartes
+const CHW = 600;                             // largeur d'une image de coffre en grand (par défaut : meta.json donne chw par coffre)
 const CARD_Y = 650, CARD_W = 468;            // la carte révélée
 const CARD_R = 1.375, PERSP = 4, THICK = 0.036; // carte : hauteur / largeur ; distance de l'œil et épaisseur, en largeurs de carte
 const SUSPENSE = { common: 0, rare: 0.3, epic: 0.7, legendary: 1.15, ultimate: 1.6 };
@@ -77,7 +77,7 @@ function vignette() {
 export async function openChestAnim(loot) {
   const stacks = loot.cards.map((c) => ({ ...c, rarity: ANIMALS[c.id].rarity }));
   const rarities = [...new Set(stacks.map((c) => c.rarity))];
-  const ready = Promise.all([loot.direct ? null : chestAssets(loot.tier), ...rarities.map(backAssets), ...stacks.map((c) => cardHd(c.id))]);   // direct : cartes achetées, sans cage
+  const ready = Promise.all([loot.direct ? null : chestAssets(loot.tier), ...rarities.map(backAssets), ...stacks.map((c) => cardHd(c.id))]);   // direct : cartes achetées, sans coffre
   const cv = h('canvas', { class: 'ch-cv' });
   const skip = h('button', { class: 'ch-skip t xs', onclick: (e) => { e.stopPropagation(); S.skip = true; tap(); } }, 'Tout voir ▸▸');
   const el = h('div', { class: 'chest-ov' }, cv, skip);
@@ -185,11 +185,15 @@ export async function openChestAnim(loot) {
     ctx.globalAlpha = 1;
   };
 
-  // ---------- la cage et son socle ----------
-  const meta = () => DATA.chestMeta || { fw: 217, fh: 290, cols: 8 };
-  const box = () => { const m = meta(); return (m.box && m.box[loot.tier]) || [m.fw * 0.12, m.fh * 0.2, m.fw * 0.88, m.fh * 0.8]; };   // le corps de la cage dans son image
-  const chestH = () => CHW * meta().fh / meta().fw;
-  const bodyH = () => (box()[3] - box()[1]) * CHW / meta().fw, bodyW = () => (box()[2] - box()[0]) * CHW / meta().fw;
+  // ---------- le coffre et son socle ----------
+  // meta.json : par coffre, la taille des images de sa planche (fw, fh, cols), sa largeur à l'écran (chw) et le corps du
+  // coffre fermé dans l'image (box) ; seq : quelles images montrer à chaque moment (crack : le cadenas se fend peu à peu)
+  const meta = () => { const M = DATA.chestMeta || {}; return M[loot.tier] || (M.fw ? M : { fw: 217, fh: 290, cols: 8 }); };
+  const SEQ = () => (DATA.chestMeta && DATA.chestMeta.seq) || { hop: [1, 2, 3], shake: [1, 2, 3], open: [3, 4, 5, 6, 7, 8], idle: [8, 9], lit: 6 };
+  const chw = () => meta().chw || CHW;
+  const box = () => { const m = meta(); return (Array.isArray(m.box) ? m.box : m.box && m.box[loot.tier]) || [m.fw * 0.12, m.fh * 0.2, m.fw * 0.88, m.fh * 0.8]; };   // le corps du coffre dans son image
+  const chestH = () => chw() * meta().fh / meta().fw;
+  const bodyH = () => (box()[3] - box()[1]) * chw() / meta().fw, bodyW = () => (box()[2] - box()[0]) * chw() / meta().fw;
   const mouth = () => ({ x: S.ch.x, y: S.ch.y - bodyH() * S.ch.s * 0.6 });
   const podium = (a) => {
     if (a <= 0.01) return;
@@ -202,7 +206,7 @@ export async function openChestAnim(loot) {
     ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(0, 8, 322, 66, 0, 0, 6.2832); ctx.fill();                   // dessus
     ctx.lineWidth = 5; ctx.strokeStyle = css(c, 0.9, 0.8, 70); ctx.stroke();
     ctx.lineWidth = 3; ctx.strokeStyle = css(c, 0.4 + 0.2 * Math.sin(S.time * 3), 1, 40); ctx.beginPath(); ctx.ellipse(0, 8, 250, 49, 0, 0, 6.2832); ctx.stroke();
-    ctx.fillStyle = 'rgba(0,0,0,.42)'; ctx.beginPath(); ctx.ellipse(0, 12, 190 * (1 + S.sq), 34, 0, 0, 6.2832); ctx.fill();   // ombre de la cage
+    ctx.fillStyle = 'rgba(0,0,0,.42)'; ctx.beginPath(); ctx.ellipse(0, 12, 190 * (1 + S.sq), 34, 0, 0, 6.2832); ctx.fill();   // ombre du coffre
     ctx.restore(); ctx.globalAlpha = 1;
   };
   const chest = (f, o = {}) => {
@@ -210,8 +214,8 @@ export async function openChestAnim(loot) {
     if (loot.direct || a <= 0.01) return;
     podium(a * S.pod);
     if (!img || !img.width) return;
-    const sq = S.sq + (o.sq || 0), w = CHW * s * (o.k || 1) * (1 + sq), hh = chestH() * s * (o.k || 1) * (1 - sq), yb = y + (o.dy || 0) * s, base = hh * box()[3] / m.fh;
-    if (f >= 6) {      // lumière dans la cage ouverte (elle bouche aussi les trous des images)
+    const sq = S.sq + (o.sq || 0), w = chw() * s * (o.k || 1) * (1 + sq), hh = chestH() * s * (o.k || 1) * (1 - sq), yb = y + (o.dy || 0) * s, base = hh * box()[3] / m.fh;
+    if (f >= SEQ().lit) {      // lumière dans le coffre ouvert (elle bouche aussi les trous des images)
       const cy = yb - base * 0.52, g = ctx.createRadialGradient(x, cy, 6, x, cy, w * 0.36);
       g.addColorStop(0, 'rgba(255,255,240,.96)'); g.addColorStop(0.45, css(rgbOf(C.color), 0.75)); g.addColorStop(1, css(rgbOf(C.color), 0));
       ctx.globalAlpha = a; ctx.fillStyle = g; ctx.fillRect(x - w * 0.4, cy - w * 0.4, w * 0.8, w * 0.8);
@@ -222,8 +226,8 @@ export async function openChestAnim(loot) {
     ctx.restore(); ctx.globalAlpha = 1;
     if (o.count !== false) counter();
   };
-  const openFrame = () => 8 + (Math.floor(S.time * 5) % 2);
-  function counter() {            // nombre de piles restantes, accroché à la cage
+  const openFrame = () => { const q = SEQ().idle; return q[Math.floor(S.time * 5) % q.length]; };
+  function counter() {            // nombre de piles restantes, accroché au coffre
     const n = left(); if (n <= 0 || S.ch.a < 0.5) return;
     const s = S.ch.s, r = 26 + 18 * s, x = S.ch.x + bodyW() * 0.5 * s, y = S.ch.y - bodyH() * 0.9 * s, z = 1 + 0.25 * Math.max(0, 1 - (S.time - (S.cntAt || -9)) / 0.25);
     ctx.save(); ctx.translate(x, y); ctx.scale(z, z);
@@ -346,11 +350,11 @@ export async function openChestAnim(loot) {
     if (a <= 0.01) return;
     const z = back(a);
     drawText(ctx, loot.title || C.name, CX, 176 - 60 * (1 - z), 72, 'yellow', Math.min(1, a * 1.5));      // title, sub : coffre du tutoriel
-    ctx.globalAlpha = Math.min(1, a * 1.5); label(ctx, loot.sub || (loot.welcome ? 'Cadeau de bienvenue !' : 'Cage ' + C.tier.toLowerCase()), CX, 262 - 40 * (1 - z), 32, '#f3e6d0'); ctx.globalAlpha = 1;
+    ctx.globalAlpha = Math.min(1, a * 1.5); label(ctx, loot.sub || (loot.welcome ? 'Cadeau de bienvenue !' : 'Coffre ' + C.tier.toLowerCase()), CX, 262 - 40 * (1 - z), 32, '#f3e6d0'); ctx.globalAlpha = 1;
   };
   const icon = (img, x, y, s) => { if (img && img.width) ctx.drawImage(img, x - s / 2, y - s / 2, s, s); };
   const cardIcon = (x, y, s) => { ctx.save(); ctx.translate(x, y); ctx.rotate(-0.16); ctx.fillStyle = '#1a1008'; rr(ctx, -s * 0.36, -s * 0.48, s * 0.72, s * 0.96, s * 0.14); ctx.fill(); ctx.fillStyle = '#4aa8ff'; rr(ctx, -s * 0.29, -s * 0.41, s * 0.58, s * 0.82, s * 0.1); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.beginPath(); ctx.arc(0, s * 0.03, s * 0.14, 0, 6.3); ctx.fill(); ctx.restore(); };
-  const contents = (y, a) => {          // ce que contient la cage : cartes, pièces, gemmes
+  const contents = (y, a) => {          // ce que contient le coffre : cartes, pièces, gemmes
     const items = [['card', loot.cards.reduce((n, c) => n + c.n, 0) + ' cartes'], ['coin', String(loot.coins)]]; if (loot.gems) items.push(['ruby', String(loot.gems)]);
     ctx.font = '34px "Lilita One",sans-serif';
     const ws = items.map((it) => 62 + ctx.measureText(it[1]).width), tot = ws.reduce((s, w) => s + w, 0) + 40 * (items.length - 1) + 60;
@@ -429,28 +433,29 @@ export async function openChestAnim(loot) {
     idle() {
       S.ray.pT = 0.72 + 0.08 * Math.sin(S.time * 2.6);
       title(1);
-      // la cage s'impatiente : un petit saut toutes les 2,4 s
+      // le coffre s'impatiente : un petit saut toutes les 2,4 s
       const c = (S.t + 1.2) % 2.4, n = Math.floor((S.t + 1.2) / 2.4), hop = c > 1.7 && c < 2.12 ? Math.sin((c - 1.7) / 0.42 * Math.PI) : 0;
       if (c >= 2.12 && S.hopN !== n) { S.hopN = n; S.sq = 0.09; S.sqv = 0; play('chest_thud', { v: 0.22, rate: 1.3 }); burst('smoke_puff', CX, BIG.y - 10, 4, { s: 0.2, sp0: 80, sp1: 220, g: 60, back: true, life: 0.6 }); }
-      chest(hop ? 1 + Math.floor(c * 14) % 3 : 0, { dy: -hop * 30, rot: hop ? Math.sin(c * 42) * 0.03 * hop : 0, k: 1 + Math.sin(S.time * 3) * 0.008 });
+      chest(hop ? SEQ().hop[Math.floor(c * 14) % SEQ().hop.length] : 0, { dy: -hop * 30, rot: hop ? Math.sin(c * 42) * 0.03 * hop : 0, k: 1 + Math.sin(S.time * 3) * 0.008 });
       if (Math.random() < 0.16) fx('star_big', CX + rand(-290, 290), BIG.y - rand(60, 640), { s0: 0.02, s1: 0.13, life: 0.9, vy: -40, add: true, back: Math.random() < 0.6 });
       contents(BIG.y + 150, clamp(S.t / 0.3, 0, 1));
       hint('Touche pour ouvrir', 1440, 46);
       if (TEST || S.skip) tap();
     },
     shake() {
-      const dur = S.skip ? 0.3 : 0.8 + 0.07 * tierN, kf = clamp(S.t / dur, 0, 1), f = 1 + Math.floor(S.t * (9 + 14 * kf)) % 3, cy = BIG.y - bodyH() * 0.5;
+      const dur = S.skip ? 0.3 : 0.8 + 0.07 * tierN, kf = clamp(S.t / dur, 0, 1), cy = BIG.y - bodyH() * 0.5, sh = SEQ().shake;
+      const f = SEQ().crack ? sh[Math.min(sh.length - 1, Math.floor(kf * sh.length))] : sh[Math.floor(S.t * (9 + 14 * kf)) % sh.length];   // crack : le cadenas se fend
       S.shake = Math.max(S.shake, 3 + 13 * kf * kf); S.ray.pT = 0.85 + 0.95 * kf;
       title(1 - kf * 1.6);
-      if (Math.random() < 0.4 + 0.5 * kf) inward(CX, cy, Math.random() < 0.3 ? '#ffffff' : C.color, 340, 640);     // la lumière est aspirée par la cage
+      if (Math.random() < 0.4 + 0.5 * kf) inward(CX, cy, Math.random() < 0.3 ? '#ffffff' : C.color, 340, 640);     // la lumière est aspirée par le coffre
       if (Math.random() < 0.4) fx('star_big', CX + rand(-230, 230), cy + rand(-260, 260), { s0: 0.05, s1: 0.18, life: 0.5, add: true });
       chest(f, { dx: rand(-1, 1) * 8 * kf, dy: rand(-1, 1) * 4 * kf, rot: rand(-1, 1) * 0.035 * kf, k: 1 + 0.08 * kf * kf });
       glow(CX, cy, 520 + 260 * kf, C.color, 0.15 + 0.45 * kf * kf);
       if (S.t >= dur) go('open');
     },
     open() {
-      const f = S.t < 0.08 ? 3 : 4 + Math.min(4, Math.floor((S.t - 0.08) / 0.07)), cy = BIG.y - bodyH() * 0.5;
-      if (f >= 6 && !S.boom) {
+      const op = SEQ().open, f = op[Math.min(op.length - 1, Math.floor(S.t / 0.06))], cy = BIG.y - bodyH() * 0.5;
+      if (f >= SEQ().lit && !S.boom) {
         S.boom = true; play('chest_open'); S.flash = 0.8; S.flashCol = '255,250,225'; S.shake = 34; S.sq = -0.14; S.sqv = 0; S.ray.pT = 1.7;
         ring(CX, cy, '#ffffff', { r0: 60, r1: 900, w: 46, life: 0.55 }); ring(CX, cy, C.color, { r0: 30, r1: 700, w: 30, life: 0.75, delay: 0.08 });
         burst('star_big', CX, cy, 26, { s: 0.36, sp0: 300, sp1: 1000, up: 280, add: true });
@@ -480,7 +485,7 @@ export async function openChestAnim(loot) {
       if (loot.gems) { gain(IMG.coin, loot.coins, CX - 175, 'yellow', 'pièces', 0); gain(IMG.ruby, loot.gems, CX + 175, 'pink', 'gemmes', 0.18); } else gain(IMG.coin, loot.coins, CX, 'yellow', 'pièces', 0);
       if (S.t > 1.35 || S.skip) nextCard();
     },
-    card(dt, c, R) {  // le dos de la carte jaillit de la cage et vole jusqu'au centre en tournoyant
+    card(dt, c, R) {  // le dos de la carte jaillit du coffre et vole jusqu'au centre en tournoyant
       const T = S.skip ? 0.3 : 0.6, kf = clamp(S.t / T, 0, 1), e = easeIO(kf), from = S.from, side = S.i % 2 ? 1 : -1;
       S.ray.pT = 0.3 + 0.5 * kf;
       chest(openFrame());
@@ -613,7 +618,7 @@ export async function openChestAnim(loot) {
     },
     summary() {
       S.ray.pT = 0.6;
-      drawText(ctx, loot.welcome ? 'Bienvenue !' : 'Contenu de la cage', CX, 176 - 60 * (1 - back(S.t / 0.4)), 64, 'yellow', clamp(S.t / 0.25, 0, 1));
+      drawText(ctx, loot.welcome ? 'Bienvenue !' : 'Contenu du coffre', CX, 176 - 60 * (1 - back(S.t / 0.4)), 64, 'yellow', clamp(S.t / 0.25, 0, 1));
       const n = stacks.length, cols = n <= 4 ? n : n <= 6 ? 3 : 4, rows = Math.ceil(n / cols), cw = cols <= 3 ? 236 : 196, chh = cw * 1.375, gap = 26, rowH = chh + 96;
       const y0 = Math.max(330 + chh / 2, 800 - (rows * rowH) / 2 + chh / 2 - 40);
       stacks.forEach((c, i) => {
@@ -649,7 +654,7 @@ export async function openChestAnim(loot) {
     if (seen && !S.skip) S.prev = { id: seen.id, rarity: seen.rarity, t: 0, side: S.i % 2 ? -1 : 1 };
     S.i++; S.t = 0; S.shown = false; S.shownAt = 0; S.flipSnd = false; S.side = 0; S.beatN = -1; S.stamp = false; S.cn = 0; S.cntAt = S.time;
     if (S.i >= stacks.length && loot.direct) { close(); return; }
-    if (S.i >= stacks.length) {        // la cage vide disparaît dans un nuage, place au résumé
+    if (S.i >= stacks.length) {        // le coffre vide disparaît dans un nuage, place au résumé
       burst('smoke_puff', S.ch.x, S.ch.y - 110, 8, { s: 0.3, sp0: 100, sp1: 320, g: 60, life: 0.8 }); lightBurst(S.ch.x, S.ch.y - 110, 12, C.color, 600, 40);
       S.ch.a = 0; S.phase = 'summary'; play('reward'); skip.hidden = true; setRay(C.color, CX, 760); S.bgT = rgbOf(C.color); return;
     }

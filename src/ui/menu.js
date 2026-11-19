@@ -10,13 +10,14 @@ import { W, H, view, onResize, setBackdrop, warmBackdrop } from './stage.js';
 
 export const TABS = ['shop', 'collection', 'main', 'clan', 'ranked'];   // de gauche à droite, comme dans la barre du bas
 const BGKEY = { shop: 'bgShop', collection: 'bgCollection', main: 'bgMain', clan: 'bgClan', ranked: 'bgRanked' };
-// zones cliquables de la barre du bas (x de début et de fin de chaque tuile), selon l'onglet actif
+// zones cliquables de la barre du bas (x de début et de fin de chaque case), selon l'onglet actif : la case de l'onglet
+// actif fait 250 px, les autres se partagent le reste (barre refaite pour la mise à jour tropicale, voir m5_nav.py)
 const NAV = {
-  main: [[0, 178], [182, 345], [348, 596], [600, 760], [765, 941]],
-  shop: [[0, 218], [222, 392], [396, 578], [582, 756], [760, 941]],
-  collection: [[0, 176], [178, 400], [404, 582], [586, 758], [762, 941]],
-  clan: [[0, 178], [182, 345], [350, 540], [543, 750], [755, 941]],
-  ranked: [[0, 178], [182, 347], [349, 535], [535, 713], [713, 941]],
+  shop: [[0, 250], [250, 423], [423, 596], [596, 768], [768, 941]],
+  collection: [[0, 173], [173, 423], [423, 596], [596, 768], [768, 941]],
+  main: [[0, 173], [173, 346], [346, 596], [596, 768], [768, 941]],
+  clan: [[0, 173], [173, 346], [346, 518], [518, 768], [768, 941]],
+  ranked: [[0, 173], [173, 346], [346, 518], [518, 691], [691, 941]],
 };
 const pages = {};          // nom → fonction(page) qui dessine les textes et les boutons de la page
 const actions = {};        // boutons de la barre du haut
@@ -41,12 +42,12 @@ export function refreshTop() {
 // affichée est complète, il ne peut pas y avoir d'écran vide entre deux pages.
 const cv = $('menuCv'), ctx = cv.getContext('2d', { alpha: false });
 let K = 1;                                          // pixels du canvas par unité de scène
-const TOP_EDGE = [[0, 84], [104, 84], [104, 70], [778, 70], [778, 78], [850, 78], [850, 70], [941, 70]];   // bas de la barre du haut : sous l'étoile, les jauges et le rubis
-const NAV_Y = 1500;                                 // haut de la barre du bas
+const TOP_EDGE = [[0, 76], [104, 76], [104, 72], [941, 72]];   // bas de la barre du haut : sous l'étoile, puis sous les cases
+const NAV_Y = 1505;                                 // haut de la barre du bas (haut des cases au repos)
 // L'icône de l'onglet actif dépasse de la barre du bas et mord sur la page. Pour que la page glisse dessous, trois
 // petites images par onglet, dans le même cadre [x, y, largeur, hauteur] (fabriquées par build_navcap.py) :
 // navcap_* l'icône détourée, navfill_* le décor reconstruit dessous, navring_* l'icône avec son liseré de décor.
-const ICON = { shop: [53, 1487, 115, 13], collection: [178, 1463, 220, 37], main: [345, 1467, 253, 33], clan: [544, 1464, 204, 36], ranked: [748, 1461, 160, 39] };
+const ICON = { shop: [0, 1457, 252, 48], collection: [171, 1468, 254, 37], main: [344, 1459, 254, 46], clan: [516, 1457, 254, 48], ranked: [689, 1478, 252, 27] };
 const RING_PX = 28;                                 // l'icône retrouve son liseré quand sa page est à moins de 28 px de sa place
 const SRC = {};                                     // onglet → { bg, cap, ring, patch } : les images décodées, à leur taille d'origine
 let FIT = null;                                     // les mêmes, mises une fois pour toutes à la taille du canvas : { k, bg, cap, ring, patch, box }
@@ -170,7 +171,7 @@ function setTab(t) {
   if (panes[tab]) panes[tab].pg.removeAttribute('id');
   tab = t; mount(t).pg.id = 'page';
   const nav = $('nav'); nav.textContent = '';
-  NAV[t].forEach(([x0, x1], i) => nav.append(h('button', { class: 'hit', 'aria-label': TABS[i], style: { left: x0 + 'px', top: '0', width: (x1 - x0) + 'px', height: '172px' }, onclick: () => go(TABS[i]) })));
+  NAV[t].forEach(([x0, x1], i) => nav.append(h('button', { class: 'hit', 'aria-label': TABS[i], style: { left: x0 + 'px', top: '0', width: (x1 - x0) + 'px', height: '167px' }, onclick: () => go(TABS[i]) })));
   liftFixed(); refreshTop(); drawCap();
 }
 // Place les pages et redessine le décor pour la position actuelle de la rangée

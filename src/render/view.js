@@ -1,5 +1,5 @@
 // Affichage du combat sur un canvas : l'arène verticale, vue en entier (on peut zoomer et la faire glisser), les
-// structures (camps, catapultes et Barnabé qui les pousse, tours et leurs singes, boîtes), les dresseurs, les animaux animés
+// structures (camps, catapultes et Barnabé qui les pousse, tours et leurs singes, boîtes), les animaux animés
 // (les nageurs dans la rivière), projectiles, effets, et l'habillage (vie des camps, mini-carte, bouton de la catapulte,
 // barre du bas : Aura, cartes, Siffler, Attaquer). Ne décide de rien : il dessine l'état du moteur (src/game/rt.js) et
 // ce que battle.js lui passe.
@@ -130,17 +130,16 @@ const DROP_T = 0.22, DROP_H = 260;            // un animal posé tombe du ciel e
 const ellipse = (c, x, y, rx, ry) => { c.beginPath(); c.ellipse(x, y, rx, ry, 0, 0, 6.3); };
 const TEAM = ['#39a9ff', '#ff5a4a'], TEAM_LITE = ['#bfe6ff', '#ffd0c4'];
 const AMBIENT = [null, '#fff0dc', '#e4f6dc', null, '#dbe9ff', '#ffd9cb'];      // teinte de l'air selon l'arène
-// le milieu de chaque tente (fumée, flammes), la hauteur de la barre de vie, et où se tient chaque dresseur (sur le sable,
-// à côté de sa tente, du côté opposé à sa catapulte)
-const TENT_MID = [{ x: 512, y: 1300 }, { x: 512, y: 150 }], CAMP_BAR = [1396, 170], TRAINER = [{ x: 594, y: 1232 }, { x: 430, y: 302 }];
+// le milieu de chaque tente (fumée, flammes) et la hauteur de sa barre de vie
+const TENT_MID = [{ x: 512, y: 1326 }, { x: 512, y: 158 }], CAMP_BAR = [1424, 178];
 // les tours : centre de la cage et de son anneau (le singe libéré s'y tient), bas de la tour (ordre d'affichage)
-const TOWER = { L: 81, R: 943, ring: 688, base: 884, bar: 552 };
+const TOWER = { L: 81, R: 943, ring: 708, base: 886, bar: 572 };
 const dir4 = (dx, dy) => (Math.abs(dx) > Math.abs(dy) * 1.1 ? (dx > 0 ? 'E' : 'W') : (dy > 0 ? 'S' : 'N'));
 const CANFILTER = (() => { try { return typeof document !== 'undefined' && 'filter' in document.createElement('canvas').getContext('2d'); } catch (e) { return false; } })();
 const campPct = (cp) => Math.ceil(100 * Math.max(0, cp.hp) / cp.maxHp - 1e-6);       // vie d'un camp en %, arrondie vers le haut (1 % tant qu'il tient)
 const ROCK = [[0, 1], [0.8, 0.86], [1.5, 1.04], [2.3, 0.9], [3.1, 1], [3.9, 0.84], [4.7, 1.02], [5.5, 0.9]];      // contour du rocher (angle, rayon)
-// taille de dessin de la catapulte, de Barnabé qui la pousse et des dresseurs (pixels de leur planche → pixels de la carte)
-const CATA_S = 0.9, BARN_S = 0.8, TRAIN_S = 0.85;
+// taille de dessin de la catapulte et de Barnabé qui la pousse (pixels de leur planche → pixels de la carte)
+const CATA_S = 0.9, BARN_S = 0.8;
 const DQ = 1.7;                                // gouttes et étincelles : taille et vitesse (écrites à l'échelle de l'ancienne carte)
 // Les tabliers des ponts : les nageurs passent dessous. Pour chacun : le contour et sa boîte.
 const DECKS = Object.values(BRIDGES).map((b) => {
@@ -180,10 +179,7 @@ export class View {
     this.shake = 0; this.time = 0; this.flash = 0; this.flashColor = '255,255,255'; this.banners = [];
     this.hand = [{}, {}, {}, {}]; this.auraN = -1; this.mapfx = new MapFx(); this.zoneCv = {};
     this.cam = { x: MAP_W / 2, y: MAP_H, z: ZOOM.min }; this.camT = null; this.cpulse = [0, 0]; this.chp = null; this.pings = []; this.ripples = [];
-    this.tr = [{ anim: 'idle', t: 0, left: 0 }, { anim: 'idle', t: 0, left: 0 }];
   }
-  // le dresseur d'un camp réagit : 'cheer' (ordre d'attaque, victoire), 'worry' (repli, coup dur), 'angry' (son camp est frappé)
-  trainerAct(side, anim, dur = 1.5) { const T = this.tr[side]; if (!T) return; if (T.anim !== anim) T.t = 0; T.anim = anim; T.left = Math.max(T.left, dur); }
   // ronds dans l'eau (nageurs, plongeons)
   ripple(x, y, r = 10, life = 0.9, a = 0.55) { this.ripples.push({ x, y, r, life, a, age: 0 }); if (this.ripples.length > 60) this.ripples.shift(); }
   resize(scale) {
@@ -195,7 +191,6 @@ export class View {
     this.parts.length = 0; this.texts.length = 0; this.decals.length = 0; this.dots.length = 0; this.vis.clear(); this.svis.clear(); this.shake = 0; this.flash = 0; this.banners.length = 0;
     this.arena = arena; this.hand = [{}, {}, {}, {}]; this.auraN = -1; this.mapfx.reset(); this.cpulse = [0, 0]; this.chp = null;
     this.cam = this.clampCam({ x: MAP_W / 2, y: MAP_H, z: ZOOM.min }); this.camT = null; this.pings = []; this.ripples = [];
-    this.tr = [{ anim: 'idle', t: 0, left: 0 }, { anim: 'idle', t: 0, left: 0 }];
   }
   // signal sur la mini-carte (tour prise, boîte cassée, animal tombé hors de l'écran)
   ping(x, y, col = '#fff') { this.pings.push({ x, y, col, age: 0 }); if (this.pings.length > 8) this.pings.shift(); }
@@ -311,14 +306,13 @@ export class View {
     for (const cp of b.catas) { const m = this.monkeyAt(cp, dt); list.push({ y: cp.y, cata: cp }, { y: m.y + 0.5, monkey: cp }); }
     list.push({ y: 2000, tent: 1 });
     for (const cp of b.camps) list.push({ y: cp.side === 0 ? 2001 : 130, camp: cp });      // l'éclat de la tente bleue passe par-dessus son image
-    for (const s of [0, 1]) list.push({ y: TRAINER[s].y, trainer: s });
     const G = b.gold;
     if (G && G.box && !G.box.dead) list.push({ y: G.box.y + 4, gold: G.box });
     if (G) for (const m of G.monkeys) if (!m.gone) list.push({ y: m.py + (m.y - m.py) * a + (goldAir(m) ? 60 : 0), gm: m });
     list.sort((p, q) => p.y - q.y);
     for (const it of list) {
       if (it.u) this.drawUnit(it.u, dt, a, b, ui); else if (it.tent) this.prop('tentB'); else if (it.camp) this.drawCamp(it.camp, dt, b);
-      else if (it.cata) this.drawCata(it.cata, dt, b, ui); else if (it.monkey) this.drawMonkey(it.monkey, b); else if (it.trainer !== undefined) this.drawTrainer(it.trainer, dt, b);
+      else if (it.cata) this.drawCata(it.cata, dt, b, ui); else if (it.monkey) this.drawMonkey(it.monkey, b);
       else if (it.gold) this.drawGoldBox(it.gold, dt, ui); else if (it.gm) this.drawGoldMonkey(it.gm, dt, a);
       else this.drawStruct(it.s, dt, b, ui);
     }
@@ -630,18 +624,6 @@ export class View {
     else { const br = Math.sin(this.time * 2.4 + cp.side); sy = 1 + br * 0.02; anim = cp.fire ? 'walk_' + dir4(cp.fx, cp.fy) : 'walk_S'; }
     c.globalAlpha = 0.8; c.drawImage(sprites().shadow, x - 24, y - 8, 48, 19); c.globalAlpha = 1;
     drawUnitFrame(c, 'tutomonkey', anim, fr, x, y + oy, BARN_S, 1, sx, sy);
-  }
-  // Le dresseur de chaque camp, en petit à côté de sa tente : il encourage, s'inquiète ou se fâche selon le combat
-  drawTrainer(s, dt, b) {
-    const P = TRAINER[s], T = this.tr[s], key = 'trainer' + s; if (!this.onScreen(P.x, P.y, 110)) { T.t += dt; return; }
-    T.t += dt; T.left -= dt;
-    if (b.over) { T.anim = b.winner === s ? 'cheer' : b.winner < 0 ? 'worry' : 'angry'; T.left = 1; }
-    else if (T.left <= 0 && T.anim !== 'idle') { T.anim = 'idle'; T.t = 0; }
-    // au repos il trépigne en boucle ; une réaction se joue une fois, puis son moment le plus expressif tourne en boucle
-    const c = this.ctx, n = animLen(key, T.anim), f = Math.floor(T.t * 9), fr = T.anim === 'idle' ? Math.floor(T.t * 5) % n : f < n ? f : 2 + (f - n) % 3;
-    c.globalAlpha = 0.85; c.drawImage(sprites().shadow, P.x - 24, P.y - 8, 48, 18); c.globalAlpha = 1;
-    c.fillStyle = TEAM[s]; c.globalAlpha = 0.5; ellipse(c, P.x, P.y + 1, 25, 8); c.fill(); c.globalAlpha = 1;
-    drawUnitFrame(c, key, T.anim, fr, P.x, P.y, TRAIN_S);
   }
   drawCampBar(s) {
     const y = CAMP_BAR[s.side]; if (!this.onScreen(s.x, y, 140)) return;

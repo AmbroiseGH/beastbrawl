@@ -4,21 +4,26 @@ import { ANIMAL_IDS } from '../data/animals.js';
 import { CHEST_IDS } from '../data/cards.js';
 
 export const IMG = {};     // images par nom
+// Image d'un coffre fermé (accueil, boutique, fiches, fin de combat)
+export const chestIcon = (tier) => 'assets/chests/icon_' + tier + '.webp?v=4';
 export const DATA = {};    // fichiers json par nom
 
 const BOOT_IMAGES = {
-  bgMain: 'bg/main2.webp', bgShop: 'bg/shop2.webp', bgCollection: 'bg/collection.webp', bgClan: 'bg/clan.webp', bgRanked: 'bg/ranked.webp',
+  // fonds des menus de la mise à jour tropicale (nouvelles barres du haut et du bas, accueil refait, boutique à 6 coffres)
+  bgMain: 'bg/main3.webp', bgShop: 'bg/shop3.webp', bgCollection: 'bg/collection2.webp', bgClan: 'bg/clan2.webp', bgRanked: 'bg/ranked2.webp',
   fx: 'fx/fx.webp', font: 'fonts/bitmap.webp',
-  coin: 'ui/cur_coin.webp', paw: 'ui/cur_paw.webp', ruby: 'ui/cur_ruby.webp', xp: 'ui/xp_star.webp', trophy: 'ui/ic_trophy.webp', lock: 'ui/ic_lock.webp', star: 'ui/ic_star.webp',
+  coin: 'ui/cur_coin.webp', paw: 'ui/cur_paw.webp', ruby: 'ui/cur_ruby.webp', xp: 'ui/xp_star.webp', trophy: 'ui/ic_trophy2.webp', lock: 'ui/ic_lock.webp', star: 'ui/ic_star.webp',
   ...Object.fromEntries(ANIMAL_IDS.map((id) => ['card_' + id, 'cards/' + id + '.webp'])),
   ...Object.fromEntries(ANIMAL_IDS.map((id) => ['pt_' + id, 'portraits/' + id + '.webp'])),
-  ...Object.fromEntries(CHEST_IDS.map((id) => ['chest_' + id, 'chests/icon_' + id + '.webp'])),
+  ...Object.fromEntries(CHEST_IDS.map((id) => ['chest_' + id, chestIcon(id).slice(7)])),
 };
 const UI_PRELOAD = ['btn_yellow', 'btn_green', 'btn_blue', 'btn_purple', 'btn_red', 'btn_stone', 'btn_wood', 'rib_blue', 'rib_red', 'rib_purple', 'rib_yellow',
   'ic_close', 'ic_ok', 'ic_info', 'ic_settings', 'ic_play', 'ic_back', 'ic_crown', 'ic_shield_red', 'ic_shield_blue', 'ic_target',
   'av_tiger', 'av_gorilla', 'av_eagle', 'av_tiger2', 'av_bulldog', 'av_monkey', 'av_croc', 'av_orang', 'order_whistle', 'order_attack', 'xp_hud',
   ...['shop', 'collection', 'main', 'clan', 'ranked'].flatMap((t) => ['navcap_' + t, 'navring_' + t, 'navfill_' + t])];
-const BOOT_JSONS = { fx: 'fx/fx.json', font: 'fonts/bitmap.json', chestMeta: 'chests/meta.json?v=3' };
+const BOOT_JSONS = { fx: 'fx/fx.json', font: 'fonts/bitmap.json', chestMeta: 'chests/meta.json?v=4' };
+// images de la barre du bas et de la jauge d'XP refaites pour la mise à jour tropicale (?v=2 : pas l'ancienne copie gardée)
+const UI_V2 = /^(nav(cap|ring|fill)_|xp_hud$)/;
 
 const pending = {};
 function loadImage(src) {
@@ -44,14 +49,14 @@ export function json(key, path) {
 export const unitAssets = (id, hd) => { const k = hd ? id + '_hd' : id; return Promise.all([image(k, 'units/' + k + '.webp?v=4'), json(k, 'units/' + k + '.json?v=4')]); };
 // La grande arène : fond en haute définition, mini-carte, masque de l'eau (pour l'animer), éléments détourés (boîtes,
 // cages, tours, tente), barre du bas, fond flouté autour de l'écran, les singes des tours, les catapultes et leur
-// singe (Barnabé), les deux dresseurs, la boîte dorée et son singe (?v=3 : la carte verticale)
-export const ARENA_SPRITES = ['towermonkey0', 'towermonkey1', 'cata0', 'cata1', 'tutomonkey', 'trainer0', 'trainer1', 'goldbox', 'goldmonkey'];
+// singe (Barnabé), la boîte dorée et son singe (?v=4 : la carte « arena » simplifiée)
+export const ARENA_SPRITES = ['towermonkey0', 'towermonkey1', 'cata0', 'cata1', 'tutomonkey', 'goldbox', 'goldmonkey'];
 export function mapAssets(n) {
-  return Promise.all([image('map', 'map/map.webp?v=3'), image('mini', 'map/mini.webp?v=3'), image('water', 'map/water.png?v=3'), image('props', 'map/props.webp?v=3'),
+  return Promise.all([image('map', 'map/map.webp?v=4'), image('mini', 'map/mini.webp?v=4'), image('water', 'map/water.png?v=4'), image('props', 'map/props.webp?v=4'),
     image('hud', 'arena/hud.webp'), image('field' + n, 'arena/field' + n + '.webp?v=3'), ...ARENA_SPRITES.map((k) => unitAssets(k))]);
 }
-// Planches haute définition (?v=3 : leur découpage a changé, l'ancienne copie gardée hors ligne ne doit pas servir)
-export const chestAssets = (tier) => image('sheet_' + tier, 'chests/' + tier + '.webp?v=3');
+// Planches des coffres (?v=4 : les 6 coffres de la mise à jour tropicale, l'ancienne copie gardée hors ligne ne doit pas servir)
+export const chestAssets = (tier) => image('sheet_' + tier, 'chests/' + tier + '.webp?v=4');
 export const backAssets = (r) => image('back_' + r, 'cards/back_' + r + '.webp');          // dos de carte (cadre de 640 px au centre d'une image de 940)
 export const cardHd = (id) => image('cardhd_' + id, 'cards/' + id + '_hd.webp');      // grande carte, pour la révélation
 
@@ -59,7 +64,7 @@ export const cardHd = (id) => image('cardhd_' + id, 'cards/' + id + '_hd.webp');
 export async function loadAll(onProgress) {
   const jobs = [];
   for (const k in BOOT_IMAGES) jobs.push(image(k, BOOT_IMAGES[k]));
-  for (const n of UI_PRELOAD) jobs.push(image(n, 'ui/' + n + '.webp'));
+  for (const n of UI_PRELOAD) jobs.push(image(n, 'ui/' + n + '.webp' + (UI_V2.test(n) ? '?v=2' : '')));
   for (const k in BOOT_JSONS) jobs.push(json(k, BOOT_JSONS[k]));
   if (document.fonts && document.fonts.load) jobs.push(document.fonts.load('40px "Lilita One"').catch(() => {}));
   let done = 0;

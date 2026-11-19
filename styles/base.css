@@ -43,7 +43,7 @@ body.debug .hit{outline:3px solid rgba(255,0,60,.8);background:rgba(255,0,60,.15
 /* icônes de monnaie dans un texte */
 .ico{display:inline-block;width:1.05em;height:1.05em;vertical-align:-.18em;background:center/contain no-repeat;margin:0 .12em}
 .ico.coin{background-image:url('../assets/ui/cur_coin.webp')}.ico.paw{background-image:url('../assets/ui/cur_paw.webp')}
-.ico.ruby{background-image:url('../assets/ui/cur_ruby.webp')}.ico.trophy{background-image:url('../assets/ui/ic_trophy.webp')}
+.ico.ruby{background-image:url('../assets/ui/cur_ruby.webp')}.ico.trophy{background-image:url('../assets/ui/ic_trophy2.webp')}
 .ico.xp{background-image:url('../assets/ui/xp_star.webp')}.ico.star{background-image:url('../assets/ui/ic_star.webp')}
 
 /* fenêtres */
@@ -82,7 +82,7 @@ body.debug .hit{outline:3px solid rgba(255,0,60,.8);background:rgba(255,0,60,.15
 .lrow .chip{padding:3px 16px 5px;border-radius:10px;font-size:22px;background:#6b5a86}
 .lrow .chip.chef{background:#7a4fb0}.lrow .chip.aine{background:#1c6fb5}.lrow .chip.membre{background:#5d5552}
 .lrow .tro{flex:none;display:flex;align-items:center;gap:6px;height:60px;padding:0 18px 0 6px;min-width:176px;border-radius:14px;background:rgba(30,20,18,.82);font-size:34px;justify-content:flex-end}
-.lrow .tro i{width:52px;height:52px;margin-right:auto;background:url('../assets/ui/ic_trophy.webp') center/contain no-repeat}
+.lrow .tro i{width:52px;height:52px;margin-right:auto;background:url('../assets/ui/ic_trophy2.webp') center/contain no-repeat}
 .lrow .act{flex:none;margin-left:10px}
 .lrow.tap:active{filter:brightness(1.12)}
 
@@ -109,6 +109,19 @@ html.intro #backdrop{opacity:0}
 #scrLogo.out{opacity:0;pointer-events:none}
 #logoCv{position:absolute;left:0;top:560px;width:941px;height:560px;transition:opacity .45s ease-in,transform .45s ease-in;will-change:opacity}
 #logoCv.out{opacity:0;transform:scale(.985)}
+/* son bloqué au lancement : « Touche l'écran » sur le noir, avant le logo */
+.tapgo{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-bottom:40px;cursor:pointer;transition:opacity .3s ease-out}
+.tapgo.out{opacity:0}
+.tg-tap{position:relative;width:170px;height:170px;margin-bottom:54px}
+.tg-tap i{position:absolute;left:50%;top:50%;border-radius:50%}
+.tg-ring{width:170px;height:170px;margin:-85px 0 0 -85px;border:6px solid #ffd36b;opacity:0;animation:tgRing 1.8s ease-out infinite}
+.tg-ring.r2{animation-delay:.9s}
+.tg-dot{width:66px;height:66px;margin:-33px 0 0 -33px;background:radial-gradient(circle at 38% 32%,#fff7dc,#ffc93c 55%,#e98a0e);box-shadow:0 0 34px rgba(255,190,60,.75);animation:tgDot 1.8s ease-in-out infinite}
+.tg-txt{font-size:76px;animation:tgPulse 1.8s ease-in-out infinite}
+.tg-sub{font-size:32px;margin-top:22px;color:#d9d3e6}
+@keyframes tgRing{0%{transform:scale(.3);opacity:.95}100%{transform:scale(1.3);opacity:0}}
+@keyframes tgDot{0%,100%{transform:scale(1)}45%{transform:scale(.84)}}
+@keyframes tgPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
 
 /* ---------- chargement ---------- */
 #scrLoading{background:#0b1430 url('../assets/bg/loading.webp') center/100% 100% no-repeat}

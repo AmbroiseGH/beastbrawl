@@ -16,7 +16,7 @@
 import { $, h, wait, fmt, clamp, rand, countTo, TEST } from '../core/utils.js';
 import { S } from '../core/save.js';
 import { sfx, play, music, ambience } from '../core/audio.js';
-import { IMG, unitAssets, mapAssets } from '../core/assets.js';
+import { IMG, unitAssets, mapAssets, chestIcon } from '../core/assets.js';
 import { CHESTS } from '../data/cards.js';
 import { ANIMALS } from '../data/animals.js';
 import { makeBot } from '../data/bots.js';
@@ -194,7 +194,7 @@ function targetAt(w) {
   const k = cataAt(w, 1); if (k && !k.dead) return k;
   const gb = b.gold && b.gold.box; if (gb && !gb.dead && Math.hypot((w.x - gb.x) / (gb.rx + 6 + tol), (w.y - gb.y + 30) / (42 + tol)) < 1) return gb;
   for (const c of b.crates) if (!c.dead && Math.hypot((w.x - c.x) / (c.rx + tol), (w.y - c.y + 14) / (c.ry + 20 + tol)) < 1) return c;
-  for (const t of b.towers) if (t.side !== 0 && Math.abs(w.x - t.x) < 78 + tol && w.y > 554 - tol && w.y < 890) return t;
+  for (const t of b.towers) if (t.side !== 0 && Math.abs(w.x - t.x) < 78 + tol && w.y > 574 - tol && w.y < 892) return t;
   const cp = b.camps[1]; if (!cp.dead && Math.abs(w.x - cp.x) < 118 + tol && w.y > -20 && w.y < cp.y + 64 + tol) return cp;
   return null;
 }
@@ -503,7 +503,6 @@ function onEvents(evs) {
           else if (!e.splash) { snd(e.by === 'octo' ? 'tentacle' : 'tower_hit', e.x, e.y, 0.55); if (Math.random() < 0.4) V.burst(camp ? 'planks' : 'rocks', sx, y, 1, { s: 0.1, sp0: 80, sp1: 200, up: 160, g: 900 }); }
           if (camp && e.side === 0 && !seen(e.x, e.y) && every('campHit', 4)) { V.ping(e.x, e.y, '#ff5a4a'); say('Ton camp est attaqué !', 1.8); }
           if (cata && e.side === 0 && !seen(e.x, e.y) && every('cataHit', 5)) { V.ping(e.x, e.y, '#ff5a4a'); say('Ta catapulte est attaquée !', 1.8); }
-          if (camp && e.side === 0 && every('campAngry', 9)) V.trainerAct(0, 'angry', 1.4);
           break;
         }
         const ent = b.ents.get(e.id), y = midY(e.id, e.x, e.y, e.air);
@@ -525,8 +524,7 @@ function onEvents(evs) {
       }
       case 'shot': { const v = V.svis.get(e.tid); if (v) v.throwT = 0; snd('whoosh', e.x, e.y, 0.4, { rate: 0.7 }); break; }
       // ---- les catapultes ----
-      case 'cata_order':      // le dresseur l'envoie au centre (il encourage) ou la rappelle (il s'inquiète) ; le singe répond
-        V.trainerAct(e.side, e.want === 'centre' ? 'cheer' : 'worry', 1.6);
+      case 'cata_order':      // envoyée au centre ou rappelée : le singe répond
         if (e.side === 0) snd('v_tuto', e.x, e.y, 0.6, { at: 0.12, rate: rand(0.95, 1.08) });
         break;
       case 'cata_move':
@@ -564,7 +562,6 @@ function onEvents(evs) {
         V.fx('dust_ring', e.x, e.y + 4, { s0: 0.3, s1: 1.1, life: 0.5, flat: 0.5, a: 0.85 });
         shake(e.x, e.y, 12); V.mapfx.excite(0.8);
         V.text('CATAPULTE CASSÉE !', e.x, e.y - 100, { size: 30, tint: ours ? 'red' : 'yellow', life: 1.5, pop: 1.3 });
-        V.trainerAct(e.side, 'angry', 1.8); V.trainerAct(1 - e.side, 'cheer', 1.4);
         if (ours) { if (!B.guide) say('Ta catapulte est cassée : Barnabé la répare', 2.6); if (!seen(e.x, e.y)) V.ping(e.x, e.y, '#ff5a4a'); }
         else play('crown', { v: 0.5, at: 0.2 });
         break;
@@ -575,7 +572,7 @@ function onEvents(evs) {
         if (e.side === 0 && !B.guide) say('Ta catapulte est réparée !', 1.8);
         break;
       case 'camp_down': {     // un camp est détruit : fin du combat
-        const mx = e.x, my = e.side === 0 ? 1290 : 150;
+        const mx = e.x, my = e.side === 0 ? 1316 : 158;
         snd('tower_down', e.x, e.y, 1); snd('slam', e.x, e.y, 0.9, { at: 0.1 }); play('crown', { at: 0.4, v: 0.8 });
         V.fx('explosion2', mx, my, { s0: 0.5, s1: 1.6, life: 0.8 }); V.fx('explosion1', mx - 60, my + 10, { s0: 0.3, s1: 1, life: 0.6, delay: 0.1 }); V.fx('explosion1', mx + 60, my - 5, { s0: 0.3, s1: 1, life: 0.6, delay: 0.2 });
         V.burst('planks', mx, my, 12, { s: 0.22, sp0: 200, sp1: 520, up: 300, g: 1000 }); V.burst('rocks', mx, my, 10, { s: 0.18, sp0: 180, sp1: 480, up: 280, g: 1000 });
@@ -597,7 +594,6 @@ function onEvents(evs) {
           V.fx('dust_ring', e.x, e.y + 6, { s0: 0.4, s1: 1.6, life: 0.55, flat: 0.5, a: 0.9 }); V.decal('crater2', e.x, e.y + 10, 6, 0.7);
           shake(e.x, e.y, 18); if (seen(e.x, e.y)) { V.flash = 0.25; V.flashColor = ours ? '150,210,255' : '255,110,90'; }
           V.text('-' + Math.round(CATA.atk.hit * 100) + ' %', e.x, e.y - 60, { size: 40, tint: ours ? 'yellow' : 'red', life: 1.3, pop: 1.4 });
-          V.trainerAct(1 - e.side, 'angry', 1.6);
           V.mapfx.excite(1.2);
         } else if (e.key === 'rocks2' || e.key === 'stone') {      // pierre d'une tour ou d'une catapulte qui garde son camp
           const big = e.tower ? 1.25 : 1;
@@ -756,7 +752,7 @@ function onEvents(evs) {
         shake(e.x, e.y, 14); V.flash = 0.25; V.flashColor = '255,225,120'; V.mapfx.excite(1.4);
         V.banner('SINGE DORÉ !', { size: 96, tint: ours ? 'yellow' : 'red', life: 1.7, y: 620, delay: 0.2 });
         V.banner(ours ? 'Ses bananes soignent tes animaux' : 'Il soigne tes adversaires : vite !', { size: 36, tint: 'white', life: 2.2, y: 712, delay: 0.45 });
-        V.trainerAct(e.side, 'cheer', 2); V.ping(e.x, e.y, '#ffd23f');
+        V.ping(e.x, e.y, '#ffd23f');
         break;
       }
       case 'gold_throw':
@@ -774,8 +770,7 @@ function onEvents(evs) {
         V.banner('MORT SUBITE !', { size: 104, tint: 'orange', life: 2.2, y: 650 }); V.banner('Le premier camp touché perd', { size: 42, tint: 'white', life: 2.2, y: 750, delay: 0.3 });
         play('overtime'); V.mapfx.excite(1.6);
         break;
-      case 'order':        // le petit dresseur de chaque camp donne l'ordre : il encourage (attaque) ou s'inquiète (repli)
-        if (!e.free) V.trainerAct(e.side, e.home ? 'worry' : 'cheer', e.home ? 1.8 : e.ref ? 1.5 : 1);
+      case 'order':
         if (e.side === 0) {
           if (e.home) { play('whistle'); V.banner('', { img: 'order_whistle', life: 1.1, y: 1250, s: 0.62 }); }
           else if (e.free) play('horn', { v: 0.5, rate: 1.25 });
@@ -853,7 +848,7 @@ function loop(now) {
       B.party = true; U.sel = -1; U.drag = null; setMode(false); U.hint = '';
       const win = b.winner === 0, draw = b.winner === -1;
       music(null);
-      if (b.why === 'camp') V.lookAt(MAP_W / 2, win ? 300 : 1250, 1.3);      // le camp qui vient de tomber
+      if (b.why === 'camp') V.lookAt(MAP_W / 2, win ? 310 : 1275, 1.3);      // le camp qui vient de tomber
       else V.lookAt(MAP_W / 2, MAP_H, ZOOM.min);         // toute l'arène
       if (b.why === 'camp') V.banner(win ? 'CAMP DÉTRUIT !' : 'TON CAMP EST TOMBÉ', { size: 90, tint: win ? 'blue' : 'red', life: 1.2, y: 560 });
       if (win) { sfx.win(); for (let i = 0; i < 4; i++) V.burst('confetti', rand(150, 790), rand(250, 500), 10, { s: 0.5, sp0: 120, sp1: 420, up: 300, g: 420, life: 2.2, delay: i * 0.12, top: true }); V.burst('star_big', 470, 700, 14, { s: 0.4, sp0: 200, sp1: 520, up: 200, life: 1.6, top: true }); }
@@ -902,13 +897,13 @@ function showEnd(res, out, ranked) {
   if (res.crates) bits.push(res.crates > 1 ? res.crates + ' boîtes cassées' : '1 boîte cassée');
   if (res.kos) bits.push(res.kos + ' K.-O.');
   if (bits.length) extra.push(bits.join(' · '));
-  if (!ranked) extra.push('Combat amical : ni trophées ni cage');
+  if (!ranked) extra.push('Combat amical : ni trophées ni coffre');
   if (r.streakBonus) extra.push(`Série de ${out.streak} victoires : +${fmt(r.streakBonus)}<i class="ico coin"></i>`);
   if (out.firstWin) extra.push('Première victoire du jour : +5<i class="ico ruby"></i>');
-  if (out.full) extra.push('<span class="bad">Tes 4 emplacements de cages sont pleins !</span>');
+  if (out.full) extra.push('<span class="bad">Tes 4 emplacements de coffres sont pleins !</span>');
   if (!win && !res.draw) extra.push(S.lossRun >= 2 ? 'Astuce : améliore tes animaux dans la Collection.' : !res.shots ? 'Astuce : envoie ta catapulte au centre, elle tirera sur le camp adverse !'
     : res.towers === 0 ? 'Astuce : prends une tour, son singe lancera des pierres pour toi !' : !res.breaks ? 'Astuce : casse la catapulte adverse quand elle vient au centre !' : 'Astuce : passe par un flanc pour surprendre le camp adverse !');
-  const chestEl = out.chest ? h('div', { class: 'end-chest' }, h('img', { src: `assets/chests/icon_${out.chest.tier}.webp`, alt: '' }), h('div', { class: 't sm' }, CHESTS[out.chest.tier].name + ' gagnée !')) : null;
+  const chestEl = out.chest ? h('div', { class: 'end-chest' }, h('img', { src: chestIcon(out.chest.tier), alt: '' }), h('div', { class: 't sm' }, CHESTS[out.chest.tier].name + ' gagné !')) : null;
   const el = h('div', { class: 'veil end' }, h('div', { class: 'end-top t', html: lines.join('   ') }), panel, chestEl, h('div', { class: 'end-extra t xs', html: extra.join('<br>') }));
   $('modals').append(el);
   let closed = false;
@@ -929,7 +924,7 @@ function showEnd(res, out, ranked) {
     (async () => {
       if (out.ups.length) await xpSettled();
       for (const u of out.ups) celebrate('Niveau ' + u.level + ' atteint !', null, `Récompense : ${rewardHtml({ coins: u.coins, rubies: u.rubies })}`);
-      if (out.arenaUp) celebrate(ARENAS[out.arenaUp - 1].name + ' débloquée !', null, `Arène ${out.arenaUp} : nouvelle ambiance, nouvelle musique et des cages plus riches.`);
+      if (out.arenaUp) celebrate(ARENAS[out.arenaUp - 1].name + ' débloquée !', null, `Arène ${out.arenaUp} : nouvelle ambiance, nouvelle musique et des coffres plus riches.`);
     })();
     if (r.coins) fly('coin', [470, 900], TARGET.coin, 10, (i) => sfx.coin(i));
     if (r.paws) fly('paw', [470, 900], TARGET.paw, 6);

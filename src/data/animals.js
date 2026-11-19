@@ -15,7 +15,8 @@
 //       anim : animation de la planche (atk1 ou atk2) ; dur : durée (s) ; windup : moment où le coup part (s)
 //       mult : multiplicateur de dégâts ; splash : rayon (cases) des dégâts de zone, splashMult : part des dégâts
 //       proj : projectile (clé d'effet) ; projSpeed : vitesse (cases/s) ; stun : étourdissement (s) ; knock : recul (cases)
-//       heal : soin d'un allié (chaton) ; shield : bouclier posé sur les alliés autour { r, amount, dur }
+//       heal : soin d'un allié (chaton) ; shield : bouclier posé sur les alliés autour { r, amount, dur, every : délai avant
+//              qu'un même allié puisse en recevoir un autre }
 //       guard : l'orang-outan se protège la tête { dur, cd, taunt } ; cloud : nuage de poison { r, dps, dur, linger }
 //       rage : le gorille gagne des dégâts à chaque cri { add, max } ; plate : le rhinocéros gagne de la résistance { add, max }
 //       spray : jet d'eau de l'éléphant { range, charges, near } ; slow : ralentissement { k, dur }
@@ -25,11 +26,11 @@ export const ANIMALS = {
     name: 'Chaton', rarity: 'common', cost: 2, count: 1, role: 'Soigneur',
     hp: 320, dmg: 46, hitEvery: 1.15, range: 4.5, sight: 6.5, speed: 1.35, radius: 0.4, mass: 2, air: false, targets: 'all', healer: true,
     attacks: {
-      normal: { anim: 'atk1', name: 'Bisou volant', dur: 0.62, windup: 0.32, mult: 1, proj: 'hearts', projSpeed: 9, heal: 105 },
-      special: { anim: 'atk2', name: 'Bouclier câlin', every: 3, dur: 0.85, windup: 0.45, mult: 1, proj: 'hearts', projSpeed: 9, heal: 105, shield: { r: 2.8, amount: 170, dur: 6 } },
+      normal: { anim: 'atk1', name: 'Bisou volant', dur: 0.62, windup: 0.32, mult: 1, proj: 'hearts', projSpeed: 9, heal: 75 },
+      special: { anim: 'atk2', name: 'Bouclier câlin', every: 3, dur: 0.85, windup: 0.45, mult: 1, proj: 'hearts', projSpeed: 9, heal: 75, shield: { r: 2.6, amount: 110, dur: 4, every: 7 } },
     },
-    desc: 'Le soigneur de la bande : ses bisous rendent des points de vie à l\'allié le plus blessé. Sans blessé à soigner, il les envoie sur l\'ennemi.',
-    talent: 'Bouclier câlin : un bisou sur trois pose un bouclier vert sur tous les alliés autour de lui.',
+    desc: 'Le soigneur de la bande : ses bisous rendent des points de vie à l\'allié le plus blessé (jamais à un autre chaton). Sans blessé à soigner, il les envoie sur l\'ennemi.',
+    talent: 'Bouclier câlin : un bisou sur trois pose un bouclier vert sur les alliés autour de lui (pas sur les chatons, et au plus un toutes les 7 secondes).',
   },
   monkey: {
     name: 'Singe', rarity: 'common', cost: 3, count: 2, role: 'Duo rapide',

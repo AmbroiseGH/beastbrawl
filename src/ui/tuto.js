@@ -4,7 +4,7 @@
 //   2. combat d'entraînement contre un bot facile : à chaque explication, le combat se fige et la caméra va sur ce dont il
 //      parle (la zone bleue, le camp rouge, la catapulte, l'eau des nageurs, les boîtes et les tours, la tente…) ; un
 //      toucher et ça repart. Quand il attend un geste (poser, donner un ordre, la catapulte), une petite bulle le rappelle ;
-//   3. un coffre en bois (cage rustique) qui s'ouvre tout de suite : de quoi commencer, des communes et quelques rares.
+//   3. un coffre en bois (coffre rustique) qui s'ouvre tout de suite : de quoi commencer, des communes et quelques rares.
 // Les nouveaux joueurs le font après avoir choisi leur pseudo ; les autres se le voient proposer une fois, et le
 // retrouvent dans les paramètres. Le coffre n'est donné qu'une fois (S.tuto.chest).
 import { $, h, wait } from '../core/utils.js';
@@ -102,8 +102,8 @@ function demoGuide(onEnd) {
   const swimSlot = (b) => handOf(b, 0).findIndex((c) => c && ANIMALS[c.id].swim);
   const STEPS = [
     { after: 2.4, until: (e) => e.type === 'deploy' && e.side === 0, remind: 'Glisse une carte dans ta <b>zone bleue</b> !', again: 10,
-      ex: { mood: 'happy', text: 'C\'est parti ! Glisse une carte de ta main jusqu\'à ta <b>zone bleue</b> pour poser un animal.', focus: [512, 1190, 1.2], at: 'high', zone: true, spot: HAND } },
-    { after: 1.8, ex: { mood: 'cheer', text: 'Bravo ! Tes animaux foncent tout seuls vers le <b>camp rouge</b>, tout en haut. Détruis-le pour gagner !', focus: [512, 230, 1.3], at: 'low' } },
+      ex: { mood: 'happy', text: 'C\'est parti ! Glisse une carte de ta main jusqu\'à ta <b>zone bleue</b> pour poser un animal.', focus: [512, 1214, 1.2], at: 'high', zone: true, spot: HAND } },
+    { after: 1.8, ex: { mood: 'cheer', text: 'Bravo ! Tes animaux foncent tout seuls vers le <b>camp rouge</b>, tout en haut. Détruis-le pour gagner !', focus: [512, 239, 1.3], at: 'low' } },
     { after: 4, when: (b) => mine(b).length > 0, most: 12, need: true,
       until: (e) => e.type === 'order' && e.side === 0 && !e.free, remind: 'Touche un de tes animaux, puis <b>sa cible</b>.', again: 12, dur: 24, min: 1.5,
       ex: { mood: 'think', text: 'Tu peux aussi donner des ordres : touche un de tes animaux, puis <b>sa cible</b> (un animal, une boîte, le camp…).',
@@ -118,11 +118,11 @@ function demoGuide(onEnd) {
         focus: (b) => [b.catas[0].x, b.catas[0].y - 40, 1.3] } },
     { after: 4, when: (b) => swimSlot(b) >= 0, most: 20,
       ex: { mood: 'think', text: `Le <b>${nm('clownfish')}</b> et le <b>${nm('octo')}</b> nagent : pose-les dans <b>l'eau de ton camp</b>. Seuls les volants et les nageurs peuvent les toucher !`,
-        focus: [512, 1290, 1.2], at: 'high', zone: 'swim', spot: (b) => { const k = swimSlot(b); return k >= 0 ? pad(HUD.slots[k], 6) : null; } } },
+        focus: [512, 1316, 1.2], at: 'high', zone: 'swim', spot: (b) => { const k = swimSlot(b); return k >= 0 ? pad(HUD.slots[k], 6) : null; } } },
     { after: 6, ex: { mood: 'happy', text: 'Casse les <b>boîtes</b> pour des bonus, et prends les <b>tours</b> des côtés : leur singe lancera des pierres pour toi.', at: 'low',
-      focus: (b) => { const n = (l) => b.crates.filter((c) => !c.dead && (c.x < 512) === l).length; return [n(true) >= n(false) ? 250 : 774, 820, 1.35]; } } },
+      focus: (b) => { const n = (l) => b.crates.filter((c) => !c.dead && (c.x < 512) === l).length; return [n(true) >= n(false) ? 252 : 772, 844, 1.35]; } } },
     { after: 5, when: (b) => mine(b).some((u) => u.hp < u.maxHp * 0.6), most: 25,
-      ex: { mood: 'think', text: 'Un animal blessé ? <b>Siffler</b> le ramène à la tente pour se soigner. Siffle encore pour le renvoyer au combat !', focus: [512, 1290, 1.2], at: 'high', spot: pad(HUD.whistle) } },
+      ex: { mood: 'think', text: 'Un animal blessé ? <b>Siffler</b> le ramène à la tente pour se soigner. Siffle encore pour le renvoyer au combat !', focus: [512, 1316, 1.2], at: 'high', spot: pad(HUD.whistle) } },
     { after: 6, ex: { mood: 'happy', text: 'Le camp en retard reçoit un <b>coup de pouce</b> : plus d\'Aura, une catapulte plus rapide… et parfois une <b>boîte dorée</b> ! À toi de jouer !', at: 'high', spot: [226, 1600, 596, 64] } },
   ];
   const reminder = (s) => { small.show('happy', s.remind); ta = 0; };
@@ -178,7 +178,7 @@ function demoGuide(onEnd) {
       if (over || !api) return;
       for (let k = i; k < STEPS.length; k++) { const s = STEPS[k]; if (s.until && !s.hit && s.until(e)) s.hit = true; }
       const once = (key, al) => { if (!seen[key]) { seen[key] = 1; alerts.push({ at: 0, ...al }); } };
-      if (e.type === 'hit' && e.kind === 'camp' && e.side === 0) once('camp', { ex: { mood: 'scared', text: 'Aïe, <b>ton camp</b> est attaqué ! Envoie des animaux le défendre.', focus: [512, 1290, 1.25], at: 'high' } });
+      if (e.type === 'hit' && e.kind === 'camp' && e.side === 0) once('camp', { ex: { mood: 'scared', text: 'Aïe, <b>ton camp</b> est attaqué ! Envoie des animaux le défendre.', focus: [512, 1316, 1.25], at: 'high' } });
       if (e.type === 'cata_break' && e.side === 0) once('break', { ex: { mood: 'scared', text: 'Oh non, ma <b>catapulte</b> est cassée ! Je la répare, ça prend quelques secondes…', focus: [e.x, e.y - 40, 1.35] } });
       if (e.type === 'cata_fixed' && e.side === 0) once('fixed', { mood: 'cheer', text: 'Réparée ! Elle repart au travail.', dur: 3 });
       if (e.type === 'deploy' && e.side === 0 && e.swim) once('swim', { mood: 'cheer', text: 'Plouf ! Tes nageurs suivent la rivière jusqu\'au camp rouge.', dur: 3.5 });
@@ -195,13 +195,13 @@ function demoGuide(onEnd) {
 
 // ---------- le tour des menus ----------
 const TOUR = [
-  { spot: [0, 0, 941, 86], mood: 'happy', text: 'En haut : ton <b>niveau</b>, tes <b>pièces</b>, tes <b>pattes</b> et tes <b>gemmes</b>. Elles servent à améliorer tes animaux et à ouvrir des cages.' },
-  { spot: [160, 1034, 618, 172], mood: 'cheer', text: '<b>Combattre</b> : un duel de 3 minutes contre un autre dresseur. Gagne pour monter en trophées et changer d\'arène !' },
-  { spot: [40, 1226, 862, 228], mood: 'think', text: 'Chaque victoire rapporte une <b>cage</b>. Elle s\'ouvre ici, avec le temps… ou des gemmes si tu es pressé.' },
-  { spot: [12, 548, 136, 370], mood: 'happy', text: 'Ici, tes <b>quêtes</b>, la <b>route des trophées</b> et tes <b>amis</b>. De l\'autre côté : le cadeau du jour, tes succès et les réglages.' },
-  { spot: [182, 1500, 163, 172], mood: 'happy', text: 'La <b>Collection</b> : tes animaux, ton deck de 8 cartes et leurs améliorations.' },
-  { spot: [0, 1500, 178, 172], mood: 'think', text: 'La <b>Boutique</b> : de nouvelles offres chaque jour.' },
-  { spot: [600, 1500, 341, 172], mood: 'happy', text: 'Le <b>Clan</b> pour jouer entre amis, et le <b>classement</b> des meilleurs dresseurs.' },
+  { spot: [0, 0, 941, 86], mood: 'happy', text: 'En haut : ton <b>niveau</b>, tes <b>pièces</b>, tes <b>pattes</b> et tes <b>gemmes</b>. Elles servent à améliorer tes animaux et à ouvrir des coffres.' },
+  { spot: [204, 1094, 525, 166], mood: 'cheer', text: '<b>Combattre</b> : un duel de 3 minutes contre un autre dresseur. Gagne pour monter en trophées et changer d\'arène !' },
+  { spot: [22, 1262, 897, 214], mood: 'think', text: 'Chaque victoire rapporte un <b>coffre</b>. Il s\'ouvre ici, avec le temps… ou des gemmes si tu es pressé.' },
+  { spot: [8, 606, 144, 410], mood: 'happy', text: 'Ici, tes <b>quêtes</b>, la <b>route des trophées</b> et tes <b>amis</b>. De l\'autre côté : le cadeau du jour, tes succès et les réglages.' },
+  { spot: [173, 1500, 173, 172], mood: 'happy', text: 'La <b>Collection</b> : tes animaux, ton deck de 8 cartes et leurs améliorations.' },
+  { spot: [0, 1500, 173, 172], mood: 'think', text: 'La <b>Boutique</b> : de nouvelles offres chaque jour.' },
+  { spot: [596, 1500, 345, 172], mood: 'happy', text: 'Le <b>Clan</b> pour jouer entre amis, et le <b>classement</b> des meilleurs dresseurs.' },
 ];
 
 // Lance tout le tutoriel. Se résout quand le joueur est de retour au menu.
@@ -225,8 +225,8 @@ export async function runTutorial() {
       await bubble({ mood: 'cheer', text: 'Voici un <b>coffre en bois</b> pour bien commencer : des cartes communes et quelques rares !', btn: 'Ouvrir !', at: 'low' });
       await openChestAnim(starterChest());
       render();
-      await bubble({ mood: 'happy', text: 'Tes nouvelles cartes sont dans ton <b>deck</b> (Collection). Touche <b>Combattre</b> quand tu es prêt. Bonne chance !', spot: [160, 1034, 618, 172] });
-    } else await bubble({ mood: 'happy', text: 'Tu connais tout ! Touche <b>Combattre</b> quand tu es prêt. Bonne chance !', spot: [160, 1034, 618, 172] });
+      await bubble({ mood: 'happy', text: 'Tes nouvelles cartes sont dans ton <b>deck</b> (Collection). Touche <b>Combattre</b> quand tu es prêt. Bonne chance !', spot: [204, 1094, 525, 166] });
+    } else await bubble({ mood: 'happy', text: 'Tu connais tout ! Touche <b>Combattre</b> quand tu es prêt. Bonne chance !', spot: [204, 1094, 525, 166] });
     S.tuto = { ...S.tuto, done: true }; changed();
   } finally { busy = false; }
 }

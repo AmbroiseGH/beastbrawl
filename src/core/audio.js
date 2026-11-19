@@ -28,15 +28,24 @@ function ensureCtx() {
   try { const C = window.AudioContext || window.webkitAudioContext; if (!C) return null; ctx = new C(); master = ctx.createGain(); master.connect(ctx.destination); } catch (e) { ctx = null; }
   return ctx;
 }
+// iPhone : le son du jeu passe aussi quand le téléphone est en mode silencieux, comme un lecteur de musique (sinon les
+// bruitages, le logo et le jingle se taisent alors que la musique du menu joue).
+try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* ancien Safari */ }
+let primed = false;
 export function unlock() {
   try {
     if (!ensureCtx()) return;
-    if (ctx.state === 'suspended') ctx.resume();
+    if (ctx.state !== 'running') {
+      ctx.resume().catch(() => {});
+      // iPhone : un son muet lancé dans le toucher lui-même finit de débloquer WebAudio
+      const s = ctx.createBufferSource(); s.buffer = ctx.createBuffer(1, 1, 22050); s.connect(ctx.destination); s.start(0);
+    }
     if (cur && cur.el.paused && wanted) cur.el.play().catch(() => {});
   } catch (e) { /* pas de son sur cet appareil */ }
 }
-addEventListener('pointerdown', unlock, { passive: true });
-addEventListener('keydown', unlock, { passive: true });
+// Les gestes qui comptent comme un « vrai » toucher diffèrent selon les navigateurs (le doigt qui se lève sur un téléphone,
+// l'appui sur une souris) : on les écoute tous.
+for (const n of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) addEventListener(n, unlock, { passive: true, capture: true });
 
 // Charge un son dans WebAudio sous le nom « name ». Renvoie vrai s'il est prêt.
 export function loadSound(name, url) {
@@ -53,6 +62,14 @@ export function loadSfx() {
 }
 // Le navigateur laisse-t-il jouer du son tout de suite ? (sinon il faut un premier toucher)
 export const soundAllowed = () => !!ensureCtx() && ctx.state === 'running';
+// Au lancement : le navigateur bloque-t-il le son tant qu'on n'a pas touché l'écran ? (iPhone, première visite sur
+// ordinateur…). Faux si le son peut partir tout seul, ou s'il n'y a pas de son du tout sur cet appareil.
+export async function soundBlocked(ms = 350) {
+  if (!ensureCtx()) return false;
+  if (ctx.state === 'running') return false;
+  try { if (navigator.getAutoplayPolicy && navigator.getAutoplayPolicy(ctx) === 'disallowed') return true; } catch (e) { /* pas d'avis */ }
+  return !(await soundReady(ms));
+}
 // Attend que le son soit débloqué (après unlock), au plus « ms » millisecondes
 export function soundReady(ms = 400) {
   if (!ctx) return Promise.resolve(false);
@@ -181,6 +198,8 @@ export const sfx = {
 // Une seule piste à la fois, avec un fondu enchaîné : 'menu', 'fight1' … 'fight4', ou null pour le silence.
 const tracks = {};
 let cur = null, wanted = null, fadeRaf = 0;
+const FILE = { menu: 'menu2' };          // menu2 : la musique tropicale de l'accueil (nouveau nom : pas l'ancienne copie gardée)
+const track = (name) => { let el = tracks[name]; if (!el) { el = tracks[name] = new Audio('assets/audio/' + (FILE[name] || name) + '.mp3'); el.loop = true; el.preload = 'auto'; } return el; };
 const musicVol = () => Math.min(1, 0.42 * S.settings.volume / 0.7);
 export function music(name) {
   wanted = S.settings.music ? name : null;
@@ -188,8 +207,7 @@ export function music(name) {
   const old = cur;
   cur = null;
   if (wanted) {
-    let el = tracks[wanted];
-    if (!el) { el = tracks[wanted] = new Audio('assets/audio/' + wanted + '.mp3'); el.loop = true; el.preload = 'auto'; }
+    const el = track(wanted);
     try { el.currentTime = 0; } catch (e) { /* rien */ }
     el.volume = 0; el.play().catch(() => {});
     cur = { name: wanted, el };
@@ -208,17 +226,20 @@ export const musicName = () => (cur ? cur.name : null);
 // Pendant un toucher : la piste « name » est lancée en muet puis arrêtée. Sur iPhone, elle pourra ensuite démarrer
 // toute seule (la musique du menu arrive après le jingle, sans attendre un autre toucher).
 export function primeMusic(name) {
-  if (!S.settings.music || (cur && cur.name === name)) return;
-  let el = tracks[name];
-  if (!el) { el = tracks[name] = new Audio('assets/audio/' + name + '.mp3'); el.loop = true; el.preload = 'auto'; }
-  el.muted = true;
+  if (primed || !S.settings.music || (cur && cur.name === name)) return;
+  const el = track(name);
+  el.muted = true; primed = true;
   const p = el.play();
   const done = () => { if (!cur || cur.el !== el) el.pause(); el.muted = false; };
-  if (p && p.then) p.then(done, () => { el.muted = false; }); else done();
+  if (p && p.then) p.then(done, () => { el.muted = false; primed = false; }); else done();
 }
 export function musicVolume() { if (cur) cur.el.volume = musicVol(); }
 // Coupe la musique quand le jeu passe en arrière-plan, la relance au retour
-document.addEventListener('visibilitychange', () => { if (!cur) return; if (document.hidden) cur.el.pause(); else if (wanted) cur.el.play().catch(() => {}); });
+// (au retour, le son coupé par le téléphone pendant l'absence — appel, autre appli — repart aussi)
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && ctx && ctx.state !== 'running') ctx.resume().catch(() => {});
+  if (!cur) return; if (document.hidden) cur.el.pause(); else if (wanted) cur.el.play().catch(() => {});
+});
 
 // Joue un fichier son à part. a.ok : promesse vraie si la lecture a démarré, fausse si le navigateur l'a bloquée
 export function playFile(src, v = 0.9) { if (!S.settings.sfx) return null; const a = new Audio(src); a.volume = Math.min(1, v * S.settings.volume / 0.7); a.ok = a.play().then(() => true, () => false); return a; }

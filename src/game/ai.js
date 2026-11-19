@@ -10,7 +10,9 @@ import { nearest, zoneAt } from './nav.js';
 const TANKS = ['bulldog', 'gorilla', 'rhino', 'elephant', 'orang'];
 const BACK = ['kitten', 'orang', 'eagle'];
 const BREAKERS = { monkey: 3, alligator: 3, pig: 2.2, gorilla: 2, rhino: 1.8, elephant: 1.6, bulldog: 1, eagle: 1, orang: 0.8, kitten: 0.2, clownfish: 0.4, octo: 0.5, dolphin: 0.6 };
-const CEN = { x: 512, y: 768 };                  // le milieu de l'île centrale, là où les catapultes viennent tirer
+const CEN = { x: 512, y: 785 };
+// la zone d'une boîte : celle où elle est posée (juste dessous si elle touche un mur)
+const crateZone = (c) => { const z = zoneAt(c.x, c.y); return z >= 1 && z <= 5 ? z : zoneAt(c.x, c.y + 30); };                  // le milieu de l'île centrale, là où les catapultes viennent tirer
 
 export function makeAI(side, skill = 0.5, rng = Math.random) {
   return { side, skill: Math.max(0, Math.min(1, skill)), rng, think: 1.2 + rng() * 2, plan: 'centre', planT: 6 + rng() * 6, lane: rng() < 0.5 ? 'L' : 'R',
@@ -18,10 +20,10 @@ export function makeAI(side, skill = 0.5, rng = Math.random) {
 }
 // Points de pose (côté rouge, en haut ; le côté bleu est le miroir) : bouche du pont central, bouts de la zone près des
 // ponts latéraux, et l'eau du camp de chaque côté pour les nageurs
-const SPOT = { centre: [512, 428], L: [306, 418], R: [718, 418], back: [512, 300], waterL: [262, 282], waterR: [762, 282] };
-const spot = (side, key) => { const [x, y] = SPOT[key]; return { x, y: side === 1 ? y : 1536 - y }; };
+const SPOT = { centre: [512, 440], L: [305, 430], R: [719, 430], back: [512, 310], waterL: [261, 292], waterR: [763, 292] };
+const spot = (side, key) => { const [x, y] = SPOT[key]; return { x, y: side === 1 ? y : 1570 - y }; };
 // Une poussée par un flanc s'arrête juste après le petit pont, chez l'adversaire, avant de foncer sur son camp
-const WAY = { 1: { L: [330, 1112], R: [694, 1112] }, 0: { L: [312, 420], R: [712, 420] } };
+const WAY = { 1: { L: [329, 1135], R: [695, 1135] }, 0: { L: [311, 432], R: [713, 432] } };
 const way = (side, lane) => { const [x, y] = WAY[side][lane]; return nearest(x, y, [HOME_ZONE[1 - side]]) || { x, y }; };
 
 export function aiStep(b, ai, dt) {
@@ -43,7 +45,7 @@ export function aiStep(b, ai, dt) {
     return true;
   };
   const swimmers = (list) => list.filter((u) => u.swim);
-  const myHalf = (u) => (side === 0 ? u.y > 768 : u.y < 768);
+  const myHalf = (u) => (side === 0 ? u.y > 785 : u.y < 785);
   const hb = BASE[side], losing = behind(b, side) - behind(b, 1 - side);
 
   // ---------- ordres aux animaux déjà sur le terrain ----------
@@ -128,11 +130,11 @@ export function aiStep(b, ai, dt) {
     if (ans.length) {
       const c = pick(ans, (x) => x.cost * 0.3 + rng()), w = wet[0];
       if (c.a.swim) { if (put(c, { x: w.x, y: w.y })) return; }
-      else if (put(c, { x: w.x, y: side === 0 ? Math.max(w.y, 1100) : Math.min(w.y, 436) }, w.id)) return;
+      else if (put(c, { x: w.x, y: side === 0 ? Math.max(w.y, 1123) : Math.min(w.y, 448) }, w.id)) return;
     }
   }
   // une boîte dans une zone où l'on peut poser (l'île d'une tour qu'on tient), quand on a de l'Aura à ne savoir qu'en faire
-  const homeCrate = b.crates.filter((c) => !c.dead && deployZones(b, side).includes(zoneAt(c.x, c.y + 30)));
+  const homeCrate = b.crates.filter((c) => !c.dead && deployZones(b, side).includes(crateZone(c)));
   if (homeCrate.length && (b.t < 14 || p.aura > 9) && rng() < 0.35 + 0.4 * skill && !near(mine, homeCrate[0].x, homeCrate[0].y, 4).length) {
     const c = pick(playable.filter((x) => !x.a.swim), (x) => (BREAKERS[x.id] || 1) - x.cost * 0.45 + rng() * 0.5);
     if (c && c.cost <= 4) { const cr = homeCrate[Math.floor(rng() * homeCrate.length)]; if (put(c, { x: cr.x + (cr.x < 512 ? 70 : -70), y: cr.y + (side === 1 ? 50 : -50) })) return; }

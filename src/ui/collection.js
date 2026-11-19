@@ -36,7 +36,7 @@ function cardCell(id) {
   const open = () => { if (dragBusy()) return; sfx.click(); cardSheet(id); };       // (pas de fiche au lâcher d'une carte qu'on vient de glisser)
   if (!has) return h('button', { class: 'cc locked', 'aria-label': a.name, dataset: { id }, onclick: open },
     h('div', { class: 'cc-card' }, h('img', { src: `assets/cards/${id}.webp`, alt: '', draggable: 'false' }), h('i', { class: 'cc-lock' })),
-    h('div', { class: 'cc-info t xs' }, 'Dans les cages'));
+    h('div', { class: 'cc-info t xs' }, 'Dans les coffres'));
   const lv = levelOf(id), need = upgradeCost(id, lv), got = cardsOf(id), ready = upgradeReady(id);
   return h('button', { class: 'cc' + (ready ? ' up' : ''), 'aria-label': a.name, dataset: { id }, onclick: open },
     h('div', { class: 'cc-card' }, h('img', { src: `assets/cards/${id}.webp`, alt: '', draggable: 'false' }), h('div', { class: 'cc-cost t' }, a.cost), ready ? h('i', { class: 'cc-arrow' }) : null),
@@ -74,7 +74,7 @@ export function cardSheet(id) {
   if (!has) {
     const sold = offers().find((o) => o.id === id && !o.bought);
     const odds = Object.values(CHESTS).map((C) => C.odds[['common', 'rare', 'epic', 'legendary', 'ultimate'].indexOf(a.rarity)]);
-    body.push(p(sold ? `En vente aujourd'hui dans la <span style="color:var(--gold)">boutique</span> !` : `Trouve-le dans les cages : ${pct(odds[0])} par carte dans une Cage Rustique, jusqu'à ${pct(odds[odds.length - 1])} dans une Cage Royale.`, 'small'));
+    body.push(p(sold ? `En vente aujourd'hui dans la <span style="color:var(--gold)">boutique</span> !` : `Trouve-le dans les coffres : ${pct(odds[0])} par carte dans un Coffre Rustique, jusqu'à ${pct(odds[odds.length - 1])} dans un Coffre Royal.`, 'small'));
   } else {
     const ratio = need ? Math.min(1, got / need.cards) : 1, full = need && got >= need.cards;
     body.push(h('div', { class: 'cd-prog' }, h('div', { class: 'cc-bar big' + (full ? ' full' : '') }, h('b', { style: { width: ratio * 100 + '%' } }), h('span', { class: 't xs' }, need ? `${fmt(got)} / ${fmt(need.cards)} cartes` : 'Niveau maximum'))));
@@ -82,7 +82,7 @@ export function cardSheet(id) {
       const okC = S.coins >= need.coins;
       buttons.push({ html: full ? `Améliorer <i class="ico coin"></i>${fmt(need.coins)}` : `Encore ${fmt(need.cards - got)} cartes`, color: full ? (okC ? 'green' : 'stone') : 'stone', keep: true, onclick: () => {
         const r = upgradeAnimal(id);
-        if (r === 'cartes') { sfx.error(); toast(`Il te faut ${fmt(need.cards - got)} cartes de plus. Ouvre des cages !`); return; }
+        if (r === 'cartes') { sfx.error(); toast(`Il te faut ${fmt(need.cards - got)} cartes de plus. Ouvre des coffres !`); return; }
         if (r === 'pieces') { sfx.error(); toast(`Il te manque ${fmt(need.coins - S.coins)}<i class="ico coin"></i>.`); return; }
         if (r === 'max' || r === 'non') return;
         m.close(); upgradeShow(id, lv, Array.isArray(r) ? r : []);

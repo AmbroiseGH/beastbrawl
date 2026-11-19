@@ -27,28 +27,32 @@ export function upgradeCost(id, level) {
   return { cards: CARDS_NEED[r][level - 1], coins: Math.round(COINS[level - 1] * RARITY[r].coinK / 10) * 10, xp: 10 * level };
 }
 
-// ---------- les cages ----------
-// odds : chance qu'une carte soit commune, rare, épique, légendaire, ultime (en %). Toutes les cages peuvent tout donner.
-export const CHEST_IDS = ['rustique', 'sauvage', 'blindee', 'doree', 'cornes', 'cristalline', 'royale'];
+// ---------- les coffres ----------
+// odds : chance qu'une carte soit commune, rare, épique, légendaire, ultime (en %). Tous les coffres peuvent tout donner.
+// Six coffres depuis la mise à jour tropicale (un par dessin) : l'ancienne Cage Dorée (héroïque) a disparu, la Cage à
+// Cornes est devenue le Coffre Mystique et la Cage Cristalline le Coffre Doré (mêmes contenus, mêmes prix).
+export const CHEST_IDS = ['rustique', 'sauvage', 'blindee', 'mystique', 'dore', 'royale'];
 export const CHESTS = {
-  rustique: { name: 'Cage Rustique', tier: 'Commune', gems: 50, time: 3 * 60, cards: 6, stacks: 2, coins: 60, gemsIn: [0, 0], odds: [89.4, 9, 1.4, 0.18, 0.02], color: '#c98a4a' },
-  sauvage: { name: 'Cage Sauvage', tier: 'Peu commune', gems: 100, time: 15 * 60, cards: 10, stacks: 3, coins: 120, gemsIn: [0, 0], odds: [85, 12.5, 2.2, 0.27, 0.03], color: '#7ccf3a' },
-  blindee: { name: 'Cage Blindée', tier: 'Rare', gems: 200, time: 60 * 60, cards: 18, stacks: 3, coins: 300, gemsIn: [0, 2], odds: [78, 18, 3.4, 0.54, 0.06], color: '#5aa0ff' },
-  doree: { name: 'Cage Dorée', tier: 'Héroïque', gems: 400, time: 3 * 3600, cards: 35, stacks: 4, coins: 700, gemsIn: [2, 6], odds: [70, 23, 6, 0.9, 0.1], color: '#ffc21f' },
-  cornes: { name: 'Cage à Cornes', tier: 'Épique', gems: 800, time: 8 * 3600, cards: 60, stacks: 4, coins: 1500, gemsIn: [6, 12], odds: [60, 28, 10, 1.75, 0.25], color: '#ff5a3a' },
-  cristalline: { name: 'Cage Cristalline', tier: 'Légendaire', gems: 1200, time: 12 * 3600, cards: 100, stacks: 5, coins: 3000, gemsIn: [12, 25], odds: [50, 32, 14, 3.4, 0.6], color: '#4fd8ff' },
-  royale: { name: 'Cage Royale', tier: 'Mythique', gems: 2000, time: 24 * 3600, cards: 160, stacks: 6, coins: 6000, gemsIn: [25, 50], odds: [40, 35, 18, 6, 1], color: '#ffd23f' },
+  rustique: { name: 'Coffre Rustique', tier: 'Commun', gems: 50, time: 3 * 60, cards: 6, stacks: 2, coins: 60, gemsIn: [0, 0], odds: [89.4, 9, 1.4, 0.18, 0.02], color: '#c98a4a', pill: '#4f8cff' },
+  sauvage: { name: 'Coffre Sauvage', tier: 'Peu commun', gems: 100, time: 15 * 60, cards: 10, stacks: 3, coins: 120, gemsIn: [0, 0], odds: [85, 12.5, 2.2, 0.27, 0.03], color: '#7ccf3a', pill: '#4fae2a' },
+  blindee: { name: 'Coffre Blindé', tier: 'Rare', gems: 200, time: 60 * 60, cards: 18, stacks: 3, coins: 300, gemsIn: [0, 2], odds: [78, 18, 3.4, 0.54, 0.06], color: '#5aa0ff', pill: '#f2b51c' },
+  mystique: { name: 'Coffre Mystique', tier: 'Épique', gems: 800, time: 8 * 3600, cards: 60, stacks: 4, coins: 1500, gemsIn: [6, 12], odds: [60, 28, 10, 1.75, 0.25], color: '#b45cff', pill: '#e0428c' },
+  dore: { name: 'Coffre Doré', tier: 'Légendaire', gems: 1200, time: 12 * 3600, cards: 100, stacks: 5, coins: 3000, gemsIn: [12, 25], odds: [50, 32, 14, 3.4, 0.6], color: '#ffc21f', pill: '#8a4dff' },
+  royale: { name: 'Coffre Royal', tier: 'Mythique', gems: 2000, time: 24 * 3600, cards: 160, stacks: 6, coins: 6000, gemsIn: [25, 50], odds: [40, 35, 18, 6, 1], color: '#ffd23f', pill: '#ff4f9a' },
 };
+// Anciennes cages encore rangées dans une sauvegarde → coffre qui les remplace
+export const OLD_CHEST = { doree: 'mystique', cornes: 'mystique', cristalline: 'dore' };
 export const CHEST_SLOTS = 4;
-// Ordre des cages gagnées en combat (comme le cycle de Clash Royale) : R rustique, S sauvage, B blindée, D dorée, C cornes, X cristalline, Y royale
-const CYCLE = 'RSRRSBRSRDRSRRBSRSCRSRRBSRDRSRXRSRBSRRSRDSRBRSRRSY';
-const LETTER = { R: 'rustique', S: 'sauvage', B: 'blindee', D: 'doree', C: 'cornes', X: 'cristalline', Y: 'royale' };
+// Ordre des coffres gagnés en combat (comme le cycle de Clash Royale) : R rustique, S sauvage, B blindé, M mystique,
+// O doré, Y royal. Les 3 anciennes cages dorées du cycle sont devenues 2 blindés et 1 mystique.
+const CYCLE = 'RSRRSBRSRBRSRRBSRSMRSRRBSRMRSRORSRBSRRSRBSRBRSRRSY';
+const LETTER = { R: 'rustique', S: 'sauvage', B: 'blindee', M: 'mystique', O: 'dore', Y: 'royale' };
 export const cycleChest = (i) => LETTER[CYCLE[((i % CYCLE.length) + CYCLE.length) % CYCLE.length]];
 // Ouvrir tout de suite : 1 gemme par tranche de 6 minutes restantes (au moins 1) ; une patte fait gagner 2 minutes
 export const gemsToOpen = (sec) => Math.max(1, Math.ceil(sec / 360));
 export const PAW_SECONDS = 120;
 
-// Tire le contenu d'une cage. rng() renvoie un nombre entre 0 et 1. arena : arène du joueur (plus de pièces plus haut).
+// Tire le contenu d'un coffre. rng() renvoie un nombre entre 0 et 1. arena : arène du joueur (plus de pièces plus haut).
 // Renvoie { coins, gems, cards: [{ id, n }] } avec les cartes rangées de la moins rare à la plus rare.
 export function rollChest(tier, arena = 1, rng = Math.random) {
   const C = CHESTS[tier], cum = [];
@@ -80,9 +84,9 @@ export function rollChest(tier, arena = 1, rng = Math.random) {
   return { tier, coins, gems, cards: stacks.map(({ id, n }) => ({ id, n })) };
 }
 
-// Cage de bienvenue des joueurs de la version 1 : le Chaton, le Bulldog et le Cochon rejoignent le Singe de départ
+// Coffre de bienvenue des joueurs de la version 1 : le Chaton, le Bulldog et le Cochon rejoignent le Singe de départ
 export const WELCOME = { tier: 'sauvage', coins: 150, gems: 0, cards: [{ id: 'kitten', n: 4 }, { id: 'bulldog', n: 3 }, { id: 'pig', n: 1 }], welcome: true };
-// Coffre en bois de la fin du tutoriel (cage rustique) : des communes, dont le poisson clown, et quelques rares. Avec les 2
+// Coffre en bois de la fin du tutoriel (coffre rustique) : des communes, dont le poisson clown, et quelques rares. Avec les 2
 // singes, le Singe de départ peut passer au niveau 2 tout de suite.
 export const STARTER = { tier: 'rustique', coins: 200, gems: 0, welcome: true, title: 'Coffre en bois', sub: 'Cadeau de Barnabé !',
   cards: [{ id: 'monkey', n: 2 }, { id: 'kitten', n: 4 }, { id: 'bulldog', n: 3 }, { id: 'clownfish', n: 4 }, { id: 'pig', n: 1 }, { id: 'octo', n: 1 }] };

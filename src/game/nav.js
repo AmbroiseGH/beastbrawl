@@ -92,8 +92,8 @@ export const bridgeExit = (x, y) => nearest(x, y, (px, py) => bridgeNear(px, py)
 // Eau où chaque camp peut poser ses animaux aquatiques : le bout de la rivière, juste à côté de sa tente (bleue en bas,
 // rouge en haut). Plus loin, un nageur posé irait trop vite chez l'adversaire.
 // L'eau d'où un nageur peut frapper le camp « side » : un peu plus large que celle où l'on pose, mais pas jusqu'aux ponts
-export const campWater = (side, x, y) => swimmable(x, y) && (side === 0 ? y >= 1100 && Math.hypot(x - 512, y - 1335) <= 400 : y <= 436 && Math.hypot(x - 512, y - 200) <= 400);
-export const swimHome = (side, x, y) => swimmable(x, y) && (side === 0 ? y >= 1150 && Math.hypot(x - 512, y - 1335) <= 340 : y <= 386 && Math.hypot(x - 512, y - 200) <= 340);
+export const campWater = (side, x, y) => swimmable(x, y) && (side === 0 ? y >= 1123 && Math.hypot(x - 512, y - 1362) <= 406 : y <= 448 && Math.hypot(x - 512, y - 208) <= 406);
+export const swimHome = (side, x, y) => swimmable(x, y) && (side === 0 ? y >= 1174 && Math.hypot(x - 512, y - 1362) <= 345 : y <= 397 && Math.hypot(x - 512, y - 208) <= 345);
 
 // Y a-t-il du sol (ou de l'eau, pour un nageur) tout le long du segment ?
 export function los(x0, y0, x1, y1, swim = false) {

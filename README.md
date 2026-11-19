@@ -31,24 +31,26 @@ Des combats d'animaux en temps réel, à la manière de Clash Royale.
    et son singe lance ses pierres pour toi, et tu peux poser tes animaux à côté. L'adversaire peut la reprendre.
    Ordres : touche un de tes animaux puis sa cible (un animal, une boîte, une tour, la catapulte, le camp), ou glisse de
    l'animal jusqu'à la cible (au bord de l'écran, l'arène défile de plus en plus vite) ; **Attaquer** allume tout et
-   donne l'ordre à toute la troupe ; **Siffler** les ramène se soigner à la tente (un second coup les relâche). Le petit
-   dresseur de chaque camp s'anime à chaque ordre.
-6. Les victoires classées rapportent des trophées et une **cage**. Une cage se range dans l'un des 4 emplacements de
-   l'accueil, se débloque en un temps qui dépend de sa rareté (3 min à 24 h), puis s'ouvre. Les gemmes l'ouvrent tout
-   de suite, les pattes font gagner 2 minutes chacune.
-7. Les cages donnent des pièces et des cartes. La première carte d'un animal le débloque ; les suivantes servent à
-   l'améliorer dans la Collection (cartes + pièces, comme dans Clash Royale). Toutes les cages peuvent contenir toutes
-   les raretés : une cage plus précieuse rend seulement les cartes rares plus fréquentes.
+   donne l'ordre à toute la troupe ; **Siffler** les ramène se soigner à la tente (un second coup les relâche).
+6. Les victoires classées rapportent des trophées et un **coffre** : Rustique, Sauvage, Blindé, Mystique, Doré ou
+   Royal. Un coffre se range dans l'un des 4 emplacements de l'accueil, se débloque en un temps qui dépend de sa rareté
+   (3 min à 24 h), puis s'ouvre : son cadenas se fend, le couvercle s'ouvre dans un éclat de lumière. Les gemmes
+   l'ouvrent tout de suite, les pattes font gagner 2 minutes chacune.
+7. Les coffres donnent des pièces et des cartes. La première carte d'un animal le débloque ; les suivantes servent à
+   l'améliorer dans la Collection (cartes + pièces, comme dans Clash Royale). Tous les coffres peuvent contenir toutes
+   les raretés : un coffre plus précieux rend seulement les cartes rares plus fréquentes.
 8. La boutique propose chaque jour trois offres de cartes payées en pièces (une commune, une rare, une épique) et les
-   sept cages, payées en gemmes.
+   six coffres, payés en gemmes.
 9. Les trophées font monter d'arène (5 arènes, une tous les 300 trophées), chacune avec son ambiance et sa musique.
 10. Les combats, les améliorations et les défis du jour rapportent de l'**expérience** (l'étoile violette) : des étoiles
    filent vers la jauge du haut, qui monte en tintant. Chaque niveau gagné rapporte des pièces et des gemmes.
 
 Le jeu se lance tout seul sur le logo Michigan Studios : la lumière balaie le logo pile sur l'accord de guitare
 western. Puis vient l'écran de chargement, où les animaux bougent doucement, avec son jingle (et le cri du gorille,
-quand la barre arrive à 100 %). Si le navigateur interdit le son avant un premier toucher (iPhone, première visite),
-tout se lance quand même, en silence, et le son arrive au premier toucher.
+quand la barre arrive à 100 %), puis l'accueil et sa musique tropicale. Si le navigateur interdit le son avant un
+premier toucher (iPhone, ou un navigateur d'ordinateur à la première visite), un écran noir « Touche l'écran » s'affiche
+une fois avant le logo : ce toucher lance le son du logo, du jingle et de la musique. Sur iPhone, le son passe aussi
+en mode silencieux.
 
 À la première visite, **Barnabé** (le singe qui pousse les catapultes) fait visiter les menus, guide un combat
 d'entraînement contre un bot facile, puis offre un coffre en bois (des cartes communes et quelques rares). Pendant ses
@@ -57,7 +59,7 @@ rappelle. Sa voix change avec son humeur (content, ravi, songeur, effrayé). Le 
 
 | Animal | Rareté | Aura | Rôle |
 | --- | --- | --- | --- |
-| Chaton | Commune | 2 | Soigneur à distance, pose des boucliers sur ses alliés |
+| Chaton | Commune | 2 | Soigneur à distance, pose des boucliers sur ses alliés (ni soin ni bouclier entre chatons) |
 | Poisson clown | Commune | 3 | Deux nageurs : bulles, pluie de bulles qui ralentit |
 | Singe | Commune | 3 | Deux singes rapides |
 | Bulldog | Commune | 4 | Garde du corps qui attire les coups |
@@ -115,12 +117,12 @@ l'ordinateur, et il reçoit le résultat à sa prochaine connexion.
 | Dossier | Contenu |
 | --- | --- |
 | `index.html`, `styles/` | la page et sa mise en forme |
-| `src/data/` | tous les chiffres du jeu : animaux (`animals.js`), cartes, raretés, cages et boutique (`cards.js`), récompenses et arènes (`economy.js`), bots |
+| `src/data/` | tous les chiffres du jeu : animaux (`animals.js`), cartes, raretés, coffres et boutique (`cards.js`), récompenses et arènes (`economy.js`), bots |
 | `src/game/` | le moteur de combat en temps réel (`rt.js`), les chemins par les ponts (`nav.js`), l'adversaire joué par l'ordinateur (`ai.js`) et la progression du joueur |
 | `src/render/` | le dessin du combat (caméra, arène vivante `mapfx.js`, animaux, effets, barre du bas) ; la carte et sa grille de marche sont dans `src/data/map.js` et `assets/map/` |
-| `src/ui/` | menus, boutique, collection, ouverture des cages (`chest.js`), fenêtres, déroulé d'un combat, tutoriel de Barnabé (`tuto.js`), logo et écran de chargement (`logo.js`, `loadart.js`) |
+| `src/ui/` | menus, boutique, collection, ouverture des coffres (`chest.js`), fenêtres, déroulé d'un combat, tutoriel de Barnabé (`tuto.js`), logo et écran de chargement (`logo.js`, `loadart.js`) |
 | `src/online/` | le jeu en ligne |
 | `assets/` | images, sons et polices |
-| `tests/` | tests du moteur de combat, des cages et de la sauvegarde (`npm test`) |
+| `tests/` | tests du moteur de combat, des coffres et de la sauvegarde (`npm test`) |
 
 Pour changer l'équilibrage, tout est dans [`src/data/animals.js`](src/data/animals.js), [`src/data/cards.js`](src/data/cards.js) et [`src/data/economy.js`](src/data/economy.js).

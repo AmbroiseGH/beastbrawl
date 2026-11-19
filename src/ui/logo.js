@@ -1,10 +1,11 @@
 // Ouverture du jeu : le logo Michigan Studios apparaît sur fond noir au son d'une guitare western, puis un reflet
 // balaie les lettres de gauche à droite. Tout part tout seul, sans toucher l'écran. L'animation suit l'horloge du son
 // (ce qu'on entend vraiment, retard du haut-parleur compris) : la lumière tombe pile sur la guitare. Si le navigateur
-// interdit le son avant un premier toucher (iPhone…), le logo passe en silence et le son arrive au premier toucher.
-import { $, wait, TEST } from '../core/utils.js';
+// interdit le son avant un premier toucher (iPhone, première visite sur ordinateur…), « Touche l'écran » s'affiche une
+// fois, sur le noir, avant le logo : ce toucher débloque le son du logo, du jingle et de la musique du menu.
+import { $, h, wait, TEST } from '../core/utils.js';
 import { S } from '../core/save.js';
-import { loadSound, soundAllowed, soundReady, playSync, syncClock } from '../core/audio.js';
+import { loadSound, soundAllowed, soundReady, soundBlocked, playSync, syncClock, unlock, primeMusic } from '../core/audio.js';
 import { view } from './stage.js';
 
 const IMG = 'assets/ui/logo_michigan2.webp', SOUND = 'assets/audio/logo.mp3', NEXT = 'assets/bg/loading.webp';
@@ -113,6 +114,27 @@ function draw(ctx, L, t) {
   ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
 }
 
+// Son bloqué par le navigateur : « Touche l'écran » sur le fond noir. Le toucher lui-même débloque le son (c'est le seul
+// moment où le navigateur l'autorise) et prépare la musique du menu, qui pourra ensuite partir toute seule.
+function tapToStart(scr) {
+  return new Promise((resolve) => {
+    const el = h('div', { class: 'tapgo' },
+      h('div', { class: 'tg-tap' }, h('i', { class: 'tg-ring' }), h('i', { class: 'tg-ring r2' }), h('i', { class: 'tg-dot' })),
+      h('div', { class: 'tg-txt t' }, 'Touche l\'écran'), h('div', { class: 'tg-sub t sm' }, 'pour lancer le jeu avec le son'));
+    scr.append(el);
+    const EVENTS = ['pointerup', 'touchend', 'click', 'keydown'];
+    let done = false;
+    const go = () => {
+      unlock(); primeMusic('menu');                 // (chaque geste du toucher y passe : l'un d'eux est le « vrai » pour ce navigateur)
+      if (done) return;
+      done = true; el.classList.add('out');
+      setTimeout(() => { el.remove(); EVENTS.forEach((n) => removeEventListener(n, go, true)); }, 600);
+      resolve();
+    };
+    EVENTS.forEach((n) => addEventListener(n, go, true));
+  });
+}
+
 // Joue l'ouverture. Se résout quand l'écran noir a fini de s'effacer (l'écran de chargement est alors visible).
 export async function studioLogo() {
   const scr = $('scrLogo');
@@ -121,7 +143,9 @@ export async function studioLogo() {
   if (TEST) { scr.remove(); done(); return; }
   const withSound = !!S.settings.sfx;
   const next = decode(NEXT);                          // l'écran de chargement, prêt à apparaître sans trou noir
-  const [img] = await Promise.all([decode(IMG), withSound ? Promise.race([loadSound('logo', SOUND), wait(3500)]) : null]);
+  const ready = Promise.all([decode(IMG), withSound ? Promise.race([loadSound('logo', SOUND), wait(3500)]) : null]);
+  if ((S.settings.sfx || S.settings.music) && await soundBlocked(350)) await tapToStart(scr);
+  const [img] = await ready;
   if (!img) { scr.remove(); done(); return; }        // pas de logo (réseau coupé…) : on passe au chargement
   const cv = $('logoCv'), k = clamp(view.scale * (window.devicePixelRatio || 1), 0.6, 2.4);
   cv.width = Math.round(CW * k); cv.height = Math.round(CH * k);
@@ -129,7 +153,7 @@ export async function studioLogo() {
 
   // la guitare part si le navigateur le permet (sinon : en silence, sans rien attendre) ; l'image suit le son
   let at = -1;
-  if (withSound && (soundAllowed() || await soundReady(300))) at = playSync('logo', 0.06);
+  if (withSound && (soundAllowed() || await soundReady(600))) at = playSync('logo', 0.06);
   const clock = syncClock(at);
   await new Promise((resolve) => {
     const frame = () => {
