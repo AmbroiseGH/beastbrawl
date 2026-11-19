@@ -16,6 +16,7 @@ const fresh = () => ({
   settings: { music: true, sfx: true, volume: 0.7 },
   clan: null, friends: [], seenIntro: false, mail: [],
   tuto: null,                                    // tutoriel de Barnabé : { offered, started, done, chest } (src/ui/tuto.js)
+  codes: {},                                     // codes secrets déjà utilisés : { bienvenue: date } (src/ui/cheat.js)
 });
 
 export let S = fresh();

@@ -61,6 +61,7 @@ body.debug .hit{outline:3px solid rgba(255,0,60,.8);background:rgba(255,0,60,.15
 .panel .body::-webkit-scrollbar{display:none}
 .panel p{margin:0 0 18px;font-size:32px;line-height:1.25;white-space:normal;color:#fff;-webkit-text-stroke:5px var(--ink);paint-order:stroke fill;text-shadow:0 3px 0 var(--ink);text-align:center}
 .panel p.small{font-size:26px;color:#e7dccb}
+.panel p.gift{font-size:56px;line-height:1.35;color:var(--gold);margin:6px 0 22px}
 .panel .row{display:flex;align-items:center;justify-content:center;gap:22px;margin-top:22px;flex-wrap:wrap}
 .card{position:relative;border-radius:22px;background:linear-gradient(#2b2220,#1d1615);border:5px solid #130d0c;box-shadow:inset 0 3px 0 rgba(255,255,255,.1);padding:18px 22px;margin-bottom:16px}
 .field{width:100%;height:92px;border-radius:20px;border:6px solid #130d0c;background:#fff8e6;color:#2a1a10;font-size:42px;text-align:center;outline:none;-webkit-user-select:text;user-select:text}
@@ -118,7 +119,6 @@ html.intro #backdrop{opacity:0}
 .tg-ring.r2{animation-delay:.9s}
 .tg-dot{width:66px;height:66px;margin:-33px 0 0 -33px;background:radial-gradient(circle at 38% 32%,#fff7dc,#ffc93c 55%,#e98a0e);box-shadow:0 0 34px rgba(255,190,60,.75);animation:tgDot 1.8s ease-in-out infinite}
 .tg-txt{font-size:76px;animation:tgPulse 1.8s ease-in-out infinite}
-.tg-sub{font-size:32px;margin-top:22px;color:#d9d3e6}
 @keyframes tgRing{0%{transform:scale(.3);opacity:.95}100%{transform:scale(1.3);opacity:0}}
 @keyframes tgDot{0%,100%{transform:scale(1)}45%{transform:scale(.84)}}
 @keyframes tgPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}

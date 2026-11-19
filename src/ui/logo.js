@@ -120,7 +120,7 @@ function tapToStart(scr) {
   return new Promise((resolve) => {
     const el = h('div', { class: 'tapgo' },
       h('div', { class: 'tg-tap' }, h('i', { class: 'tg-ring' }), h('i', { class: 'tg-ring r2' }), h('i', { class: 'tg-dot' })),
-      h('div', { class: 'tg-txt t' }, 'Touche l\'écran'), h('div', { class: 'tg-sub t sm' }, 'pour lancer le jeu avec le son'));
+      h('div', { class: 'tg-txt t' }, 'Touche l\'écran'));
     scr.append(el);
     const EVENTS = ['pointerup', 'touchend', 'click', 'keydown'];
     let done = false;
